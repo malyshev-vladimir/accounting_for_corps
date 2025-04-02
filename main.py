@@ -3,8 +3,17 @@ import os
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from models.member import Member, Title
+from services.monthly_payments import add_missing_monthly_payments
 
 FILENAME = 'data/members.json'
+
+
+def check_all_members_payments():
+    members = load_members()
+    for member in members.values():
+        add_missing_monthly_payments(member, datetime.today())
+    save_members(members)
+    print("Loading! Monthly payments checked and added.")
 
 
 def input_valid_date():
@@ -122,6 +131,8 @@ def view_members():
 
 
 def main():
+    check_all_members_payments()
+
     while True:
         print("\n Menu:")
         print("1. Add member")

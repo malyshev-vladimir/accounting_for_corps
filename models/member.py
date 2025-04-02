@@ -4,13 +4,14 @@ from decimal import Decimal, ROUND_HALF_UP
 
 
 class Title(Enum):
+    F = "F"
     CB = "CB"
     iaCB = "iaCB"
     AH = "AH"
 
 
 class Member:
-    def __init__(self, name: str, title: str, active: bool = True, start_balance: float = 0.0):
+    def __init__(self, name: str, title: str, active: bool = True, start_balance: float = 0.0, created_at=None):
         title = title.strip()
         if title not in Title._value2member_map_:
             allowed = ', '.join(t.value for t in Title)
@@ -20,6 +21,7 @@ class Member:
         self.title = title  # "CB", "iaCB", "AH"
         self.active = active
         self.start_balance = self._parse_balance(start_balance)
+        self.created_at = created_at or datetime.today().strftime("%Y-%m-%d")
         self.transactions = []
 
     @staticmethod
@@ -51,7 +53,8 @@ class Member:
             "title": self.title,
             "active": self.active,
             "start_balance": float(self.start_balance),
-            "transactions": self.transactions
+            "transactions": self.transactions,
+            "created_at": self.created_at
         }
 
     @staticmethod
@@ -59,8 +62,9 @@ class Member:
         member: Member = Member(
             name,
             data["title"],
-            data["active"],
-            data["start_balance"],
+            data.get("active", True),
+            data.get("start_balance", data.get("balance", 0.0)),
+            data.get("created_at")
         )
         member.transactions = data.get("transactions", [])
         return member
