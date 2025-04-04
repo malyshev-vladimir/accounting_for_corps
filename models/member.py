@@ -11,17 +11,18 @@ class Title(Enum):
 
 
 class Member:
-    def __init__(self, name: str, title: str, active: bool = True, start_balance: float = 0.0, created_at=None):
+    def __init__(self, email: str, name: str, title: str, start_balance: float = 0.0) -> object:
+        self.email = email
+        self.name = name.strip()
+
         title = title.strip()
         if title not in Title._value2member_map_:
             allowed = ', '.join(t.value for t in Title)
             raise ValueError(f"Invalid title '{title}'. Allowed values: {allowed}")
+        self.title = title # "F", "CB", "iaCB", "AH"
 
-        self.name = name.strip()
-        self.title = title  # "CB", "iaCB", "AH"
-        self.active = active
         self.start_balance = self._parse_balance(start_balance)
-        self.created_at = created_at or datetime.today().strftime("%Y-%m-%d")
+        self.created_at = datetime.today().strftime("%Y-%m-%d")
         self.transactions = []
 
     @staticmethod
@@ -50,21 +51,23 @@ class Member:
     @property
     def to_dict(self):
         return {
+            "email": self.email,
+            "name": self.name,
             "title": self.title,
-            "active": self.active,
             "start_balance": float(self.start_balance),
             "transactions": self.transactions,
             "created_at": self.created_at
         }
 
     @staticmethod
-    def from_dict(name, data):
+    def from_dict(email, data):
         member: Member = Member(
-            name,
-            data["title"],
-            data.get("active", True),
-            data.get("start_balance", data.get("balance", 0.0)),
-            data.get("created_at")
+            email=email,
+            name=data.get("name"),
+            title=data["title"],
+            start_balance=data.get("start_balance", data.get("balance", 0.0))
         )
+        member.active = data.get("active", True)
+        member.created_at = data.get("created_at", datetime.today().strftime("%Y-%m-%d"))
         member.transactions = data.get("transactions", [])
         return member

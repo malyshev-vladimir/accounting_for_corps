@@ -42,7 +42,7 @@ def input_valid_date():
 def input_transaction_amount():
     while True:
         value = input("Enter amount (e.g. 10.50 or -5.00): ").strip()
-        value = value.replace(",", ".")  # Replace comma with dot for decimal input to allow users using a comma)
+        value = value.replace(",", ".")  # Replace comma with dot for decimal input to allow users using a comma
         try:
             amount = Decimal(value)
             amount = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
@@ -239,17 +239,23 @@ def load_members():
         return {}
     with open(FILENAME, "r", encoding="utf-8") as f:
         data = json.load(f)
-        return {name: Member.from_dict(name, info) for name, info in data.items()}
+        return {email: Member.from_dict(email, info) for email, info in data.items()}
 
 
 def save_members(members: dict):
-    data = {name: member.to_dict for name, member in members.items()}
+    data = {email: member.to_dict for email, member in members.items()}
     with open(FILENAME, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
 
 
 def add_member():
-    name = input("Member name (must be unique): ").strip()
+    email = input("Email address: ").strip()
+    if "@" not in email or "." not in email:
+        print("Invalid email format.")
+        return
+    
+    name: str = input("Member name (must be unique): ").strip()
+    
     allowed_titles = ", ".join(t.value for t in Title)
     print(f"Title must be one of the following: {allowed_titles}")
     title = input("Title: ").strip()
@@ -266,19 +272,19 @@ def add_member():
 
     members = load_members()
 
-    if name in members:
-        print(f"A member named '{name}' already exists.")
+    if email in members:
+        print(f"A member with email '{email}' already exists ({title} {name}).")
         return
 
     try:
-        member = Member(name, title, active, balance)
+        member = Member(name, title, email, balance)
     except ValueError as e:
         print(f"{e}")
         return
 
-    members[name] = member
+    members[email] = member
     save_members(members)
-    print(f"Member '{name}' has been added.")
+    print(f"Member '{name}' with '{email}' has been added.")
 
 
 def view_members():
@@ -287,8 +293,8 @@ def view_members():
         print("No members found.")
         return
     print("\n Members list:")
-    for name, member in members.items():
-        print(f"-{member.title} {name}: active={member.active}, balance={member.balance}")
+    for email, member in members.items():
+        print(f"-{member.title} {member.name} ({email}): balance={member.balance}")
 
 
 def main():
