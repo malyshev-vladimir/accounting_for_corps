@@ -1,13 +1,90 @@
 import json
 import os
-from services.interface import input_valid_date, input_transaction_amount, input_protocol_info
+import smtplib
+
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
+from email.message import EmailMessage
 
 from models.member import Member, Title
+from services.interface import input_valid_date, input_transaction_amount, input_protocol_info
 from services.monthly_payments import add_missing_monthly_payments
+from services.email_templates import format_member_email
+from services.settings_loader import load_settings
 
 FILENAME = 'data/members.json'
+
+
+def send_email_report(to_email: str, subject: str, body: str):
+    """
+    Sends an email to the specified recipient using credentials from config/settings.json.
+
+    Parameters:
+    - to_email (str): Recipient's email address
+    - subject (str): Subject line of the email
+    - body (str): Plain-text body of the email
+    """
+
+    # Load credentials from settings file
+    settings = load_settings()
+    sender_email = settings["email_address"]
+    sender_password = settings["email_password"]
+
+    # Create and configure the email message
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = sender_email
+    msg["To"] = to_email
+    msg.set_content(body, subtype="html")
+
+    # Connect to SMTP server via SSL and send the email
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+        smtp.login(sender_email, sender_password)
+        smtp.send_message(msg)
+
+
+def send_report_to_member():
+    """
+    Prompt the user to select a member from the list and send them a personalized
+    account report via email. The email body is generated from a template.
+    """
+
+    # Load all members from the data file
+    members = load_members()
+    if not members:
+        print("No members found.")
+        return
+
+    # Present a numbered list of members (by email + name)
+    emails = list(members.keys())
+    for i, email in enumerate(emails, 1):
+        print(f"{i}. {members[email].title} {members[email].name} ({email})")
+
+    try:
+        index = int(input("Select member number: "))
+        if not 1 <= index <= len(emails):
+            raise ValueError("Invalid number.")
+    except ValueError:
+        print("Invalid input. Please enter a valid number from the list.")
+        return
+
+    # Get selected member
+    selected_email = emails[index - 1]
+    member = members[selected_email]
+
+    # Add a personalized email subject line
+    date_str = datetime.now().strftime("%d.%m.%Y")
+    subject = f"CC-Kontostand zum {date_str} ({member.title} {member.name})"
+
+    # Generate the email body from the template
+    body = format_member_email(member)
+
+    # Try sending the email and report result to user
+    try:
+        send_email_report(member.email, subject, body)
+        print(f"\n[✓] Email was successfully sent to {member.title} {member.name} ({member.email})")
+    except Exception as e:
+        print(f"\n[✗] Failed to send email to {member.title} {member.name} ({member.email}): {e}")
 
 
 def check_all_members_payments():
@@ -118,9 +195,9 @@ def add_member():
     if "@" not in email or "." not in email:
         print("Invalid email format.")
         return
-    
+
     name: str = input("Member name (must be unique): ").strip()
-    
+
     allowed_titles = ", ".join(t.value for t in Title)
     print(f"Title must be one of the following: {allowed_titles}")
     title = input("Title: ").strip()
@@ -167,7 +244,8 @@ def main():
         print("1. Add member")
         print("2. View all members")
         print("3. Add transaction to member")
-        print("4. Exit")
+        print("4. Send email report to a member")
+        print("5. Exit")
 
         choice = input("Choose an option (1–4): ").strip()
 
@@ -178,10 +256,12 @@ def main():
         elif choice == "3":
             add_transaction_to_member()
         elif choice == "4":
+            send_report_to_member()
+        elif choice == "5":
             print("Goodbye! =)")
             break
         else:
-            print("Invalid option. Please choose 1, 2, or 3.")
+            print("Invalid option. Please choose 1, 2, 3, 4 or 5.")
 
 
 if __name__ == "__main__":

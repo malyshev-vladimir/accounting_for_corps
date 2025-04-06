@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        font-size: 14px;
+        line-height: 1.6;
+        color: #000000;
+      }
+
+      div.block {
+        margin-bottom: 16px;
+      }
+
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        margin-top: 10px;
+        margin-bottom: 10px;
+      }
+
+      th,
+      td {
+        border: 1px solid #cccccc;
+        padding: 6px 10px;
+        text-align: left;
+      }
+
+      th {
+        background-color: #f2f2f2;
+      }
+
+      .balance {
+        font-weight: bold;
+        margin-top: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="block">
+      Lieber Corpsbruder,
+    </div>
+
+    <div class="block">
+      hiermit informiere ich dich ({{title}} {{name}}) über deinen aktuellen Kontostand.<br />
+      Bitte überprüfe die Angaben und teile mir eventuelle Fehler oder
+      Unstimmigkeiten mit.
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Datum</th>
+          <th>Betrag</th>
+          <th>Beschreibung</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{transactions}}
+      </tbody>
+    </table>
+
+    <div class="block balance">
+      Somit ergibt sich ein derzeitiger Kontostand von: {{balance}}
+    </div>
+
+    <div class="block">
+      Solltest du noch eine offene Schuld haben, bitte ich dich, diese
+      zeitnah zu begleichen.
+    </div>
+
+    <div class="block">
+      Für die Rückerstattung fülle bitte das anhängende Formular
+      („Antrag auf Auslagenrückerstattung“) aus und sende es an die
+      CC-E-Mail:
+      <a href="mailto:cc@corps-chattia.de">cc@corps-chattia.de</a>.
+    </div>
+
+    <div class="block">
+      Falls du Schwierigkeiten bei der Zahlung hast, teile mir das bitte
+      persönlich, telefonisch (+49 1512 105 2906) oder an die oben genannte
+      CC-E-Mail mit.
+    </div>
+
+    <div class="block">
+      Mit corpsbrüderlichem Gruß,
+    </div>
+
+    <div class="block">
+      Vladimir Malyshev Ch! KW-CC
+    </div>
+
+    <hr style="border: none; border-top: 1px solid #cccccc; margin-top: 20px;" />
+
+    <div class="block" style="font-size: 12px; color: #777777; margin-top: 30px;">
+      Diese E-Mail wurde automatisch erstellt. Bitte nicht darauf antworten.<br />
+      Sie enthält den aktuellen Stand vom {{generated_at}}.
+    </div>
+  </body>
+</html>
+
