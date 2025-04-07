@@ -1,7 +1,4 @@
-import json
-import os
 import smtplib
-
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from email.message import EmailMessage
@@ -11,8 +8,57 @@ from services.interface import input_valid_date, input_transaction_amount, input
 from services.monthly_payments import add_missing_monthly_payments
 from services.email_templates import format_member_email
 from services.settings_loader import load_settings
+from services.members_io import load_all_members, save_all_members
 
 FILENAME = 'data/members.json'
+
+
+def change_member_title():
+    """
+    Allows the user to change a member's title by adding a new entry to their title_history.
+    Prompts the user to select a member and choose a new title.
+    """
+    members = load_all_members()
+    if not members:
+        print("No members found.")
+        return
+
+    # Display members with indexes
+    emails = list(members.keys())
+    print("\n Members:")
+    for i, email in enumerate(emails, start=1):
+        member = members[email]
+        print(f"{i}. {member.name} ({email})")
+
+    try:
+        index = int(input("Select member number: "))
+        if not 1 <= index <= len(emails):
+            raise ValueError("Invalid selection.")
+    except ValueError as e:
+        print(f"Invalid input. {e}")
+        return
+
+    selected_email = emails[index - 1]
+    member = members[selected_email]
+
+    # Show current title history
+    print("\nCurrent title history:")
+    for title, date in member.title_history.items():
+        print(f"- {title} since {date}")
+
+    # Prompt for new title
+    print("\nAvailable titles:", ', '.join([t.value for t in Title]))
+    new_title = input("Enter the new title: ").strip()
+
+    if new_title not in Title._value2member_map_:
+        print(f"Invalid title '{new_title}'.")
+        return
+
+    today = datetime.today().strftime("%Y-%m-%d")
+    member.title_history[new_title] = today
+
+    save_all_members(members)
+    print(f"[✓] Title '{new_title}' added for {member.name} on {today}")
 
 
 def send_email_report(to_email: str, subject: str, body: str):
@@ -50,7 +96,7 @@ def send_report_to_member():
     """
 
     # Load all members from the data file
-    members = load_members()
+    members = load_all_members()
     if not members:
         print("No members found.")
         return
@@ -88,15 +134,15 @@ def send_report_to_member():
 
 
 def check_all_members_payments():
-    members = load_members()
+    members = load_all_members()
     for member in members.values():
         add_missing_monthly_payments(member, datetime.today())
-    save_members(members)
+    save_all_members(members)
     print("Loading! Monthly payments checked and added.")
 
 
 def add_transaction_to_member():
-    members = load_members()
+    members = load_all_members()
     if not members:
         print("No members found.")
         return
@@ -172,22 +218,8 @@ def add_transaction_to_member():
     amount = input_transaction_amount()
 
     member.add_transaction(date, description, amount)
-    save_members(members)
+    save_all_members(members)
     print(f"Transaction added to [ {date}, {description}, {amount} ]")
-
-
-def load_members():
-    if not os.path.exists(FILENAME):
-        return {}
-    with open(FILENAME, "r", encoding="utf-8") as f:
-        data = json.load(f)
-        return {email: Member.from_dict(email, info) for email, info in data.items()}
-
-
-def save_members(members: dict):
-    data = {email: member.to_dict for email, member in members.items()}
-    with open(FILENAME, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4, ensure_ascii=False)
 
 
 def add_member():
@@ -195,9 +227,9 @@ def add_member():
     if "@" not in email or "." not in email:
         print("Invalid email format.")
         return
-
+    
     name: str = input("Member name (must be unique): ").strip()
-
+    
     allowed_titles = ", ".join(t.value for t in Title)
     print(f"Title must be one of the following: {allowed_titles}")
     title = input("Title: ").strip()
@@ -209,7 +241,7 @@ def add_member():
         print("Invalid balance format. Please enter a number like 12.34.")
         return
 
-    members = load_members()
+    members = load_all_members()
 
     if email in members:
         print(f"A member with email '{email}' already exists ({title} {name}).")
@@ -222,12 +254,12 @@ def add_member():
         return
 
     members[email] = member
-    save_members(members)
+    save_all_members(members)
     print(f"Member '{name}' with '{email}' has been added.")
 
 
 def view_members():
-    members = load_members()
+    members = load_all_members()
     if not members:
         print("No members found.")
         return
@@ -245,9 +277,10 @@ def main():
         print("2. View all members")
         print("3. Add transaction to member")
         print("4. Send email report to a member")
-        print("5. Exit")
+        print("5. Change member`s title")
+        print("6. Exit")
 
-        choice = input("Choose an option (1–4): ").strip()
+        choice = input("Choose an option (1–6): ").strip()
 
         if choice == "1":
             add_member()
@@ -258,6 +291,8 @@ def main():
         elif choice == "4":
             send_report_to_member()
         elif choice == "5":
+            change_member_title()
+        elif choice == "6":
             print("Goodbye! =)")
             break
         else:

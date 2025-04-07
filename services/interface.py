@@ -1,5 +1,51 @@
 from datetime import datetime
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
+
+from services.members_io import load_all_members, save_all_members
+from models.member import Title
+
+
+def change_member_title():
+    """
+    Allows the user to assign a new title to a selected member.
+    The new title is added to the member's title_history with the current date.
+    """
+    members = load_all_members()
+    if not members:
+        print("No members found.")
+        return
+
+    # Show list of members to choose from
+    emails = list(members.keys())
+    for i, email in enumerate(emails, 1):
+        m = members[email]
+        print(f"{i}. {m.title} {m.name} ({email})")
+
+    try:
+        index = int(input("Select member number: "))
+        if not 1 <= index <= len(emails):
+            raise ValueError
+    except ValueError:
+        print("Invalid selection.")
+        return
+
+    selected_email = emails[index - 1]
+    member = members[selected_email]
+
+    # Ask for new title
+    new_title = input("Enter new title: ").strip()
+    if new_title not in Title._value2member_map_:
+        allowed = ', '.join(t.value for t in Title)
+        print(f"Invalid title. Allowed values: {allowed}")
+        return
+
+    today = datetime.today().strftime("%Y-%m-%d")
+    member.title_history[new_title] = today
+
+    # Save updated member data
+    save_all_members(members)
+
+    print(f"[✓] Title '{new_title}' assigned to {member.name} ({member.email}) as of {today}.")
 
 
 def input_valid_date():
@@ -22,13 +68,16 @@ def input_valid_date():
             print(f"{error}. Please try again")
 
 
-def input_transaction_amount():
+def input_transaction_amount(prompt="Enter amount (e.g. 12.50 or 12,50): ") -> Decimal:
+    """
+    Prompts the user to enter a monetary amount and returns a Decimal rounded to 2 decimal places.
+    Accepts both comma and dot as decimal separator.
+    Repeats prompt until valid input is entered.
+    """
     while True:
-        value = input("  => Enter amount (e.g. 10.50 or -5.00): ").strip()
-        value = value.replace(",", ".")  # Replace comma with dot for decimal input to allow users using a comma
+        user_input = input(prompt).strip().replace(",", ".")
         try:
-            amount = Decimal(value)
-            amount = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            amount = Decimal(user_input).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             return amount
         except InvalidOperation:
             print("Invalid format. Please enter a number with up to 2 decimal places.")

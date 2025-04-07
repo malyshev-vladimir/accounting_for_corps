@@ -33,11 +33,11 @@ def add_missing_monthly_payments(member, up_to_date: datetime):
                 amount = MONTHLY_PAYMENTS["monthly_payment_for_active"]
             elif title == "iaCB":
                 amount = MONTHLY_PAYMENTS["monthly_payment_for_inactive"]
-            else:  # title == "AH" или любой другой
+            else:  # title == "AH"
                 amount = Decimal("0.00")
 
             if amount > 0:
-                description = f"Monthly contribution for {ym} (title: {title})"
+                description = f"Monthly contribution for {ym}"
                 member.add_transaction(date_str, description, -amount)
 
         current += relativedelta(months=1)
