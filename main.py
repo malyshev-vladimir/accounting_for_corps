@@ -28,7 +28,7 @@ def change_member_title():
     print("\n Members:")
     for i, email in enumerate(emails, start=1):
         member = members[email]
-        print(f"{i}. {member.name} ({email})")
+        print(f"{i}. {member.last_name} ({email})")
 
     try:
         index = int(input("Select member number: "))
@@ -55,10 +55,11 @@ def change_member_title():
         return
 
     today = datetime.today().strftime("%Y-%m-%d")
-    member.title_history[new_title] = today
+    member.title_history[today] = new_title
+    member.title = new_title
 
     save_all_members(members)
-    print(f"[✓] Title '{new_title}' added for {member.name} on {today}")
+    print(f"[✓] Title '{new_title}' added for {member.last_name} on {today}")
 
 
 def send_email_report(to_email: str, subject: str, body: str):
@@ -120,7 +121,7 @@ def send_report_to_member():
 
     # Add a personalized email subject line
     date_str = datetime.now().strftime("%d.%m.%Y")
-    subject = f"CC-Kontostand zum {date_str} ({member.title} {member.name})"
+    subject = f"CC-Kontostand zum {date_str} ({member.title} {member.last_name})"
 
     # Generate the email body from the template
     body = format_member_email(member)
@@ -128,9 +129,9 @@ def send_report_to_member():
     # Try sending the email and report result to user
     try:
         send_email_report(member.email, subject, body)
-        print(f"\n[✓] Email was successfully sent to {member.title} {member.name} ({member.email})")
+        print(f"\n[✓] Email was successfully sent to {member.title} {member.last_name} ({member.email})")
     except Exception as e:
-        print(f"\n[✗] Failed to send email to {member.title} {member.name} ({member.email}): {e}")
+        print(f"\n[✗] Failed to send email to {member.title} {member.last_name} ({member.email}): {e}")
 
 
 def check_all_members_payments():
@@ -196,7 +197,7 @@ def add_transaction_to_member():
         elif transaction_type == "3":
             print("Enter the protocols info: ")
             protocol_info = input_protocol_info()
-            description = f"Strafe von {protocol_info})"
+            description = f"Strafe von {protocol_info}"
             break
 
         elif transaction_type == "4":
@@ -223,13 +224,15 @@ def add_transaction_to_member():
 
 
 def add_member():
+    """Create a new member based on user input."""
     email = input("  => Email address: ").strip()
     if "@" not in email or "." not in email:
         print("Invalid email format.")
         return
-    
-    name: str = input("Member name (must be unique): ").strip()
-    
+
+    first_name = input("First name: ").strip()
+    last_name = input("Last name: ").strip()
+
     allowed_titles = ", ".join(t.value for t in Title)
     print(f"Title must be one of the following: {allowed_titles}")
     title = input("Title: ").strip()
@@ -244,18 +247,19 @@ def add_member():
     members = load_all_members()
 
     if email in members:
-        print(f"A member with email '{email}' already exists ({title} {name}).")
+        print(f"A member with email '{email}' already exists.")
         return
 
-    try:
-        member = Member(name, title, email, balance)
-    except ValueError as e:
-        print(f"{e}")
-        return
+    member = Member(email=email, last_name=last_name, start_balance=balance)
+    member.first_name = first_name
+    member.title = title
+    member.is_resident = True
+    member.title_history = {member.created_at: title}
+    member.resident_history = {member.created_at: True}
 
     members[email] = member
     save_all_members(members)
-    print(f"Member '{name}' with '{email}' has been added.")
+    print(f"Member '{first_name} {last_name}' with '{email}' has been added.")
 
 
 def view_members():
@@ -265,7 +269,7 @@ def view_members():
         return
     print("\n Members list:")
     for email, member in members.items():
-        print(f"-{member.title} {member.name} ({email}): balance={member.balance}")
+        print(f"-{member.title} {member.last_name} ({email}): balance={member.balance}")
 
 
 def main():
