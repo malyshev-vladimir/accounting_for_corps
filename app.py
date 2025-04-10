@@ -50,7 +50,12 @@ def admin_panel():
     Admin dashboard with table of all members.
     """
     members = load_all_members()
-    return render_template("admin_members.html", members=members)
+
+    # Sort by created_at
+    sorted_members = dict(
+        sorted(members.items(), key=lambda item: item[1].created_at, reverse=True)
+    )
+    return render_template("admin_members.html", members=sorted_members)
 
 
 @app.route('/admin/add_member', methods=['GET', 'POST'])

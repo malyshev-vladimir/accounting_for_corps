@@ -1,45 +1,51 @@
 {% extends "admin_base.html" %}
 
 {% block content %}
-<h2 class="mb-4">Neues Mitglied erstellen</h2>
-<form method="POST" action="/admin/add_member">
-  <div class="mb-3">
-    <label for="email" class="form-label">E-Mail-Adresse *</label>
-    <input type="email" class="form-control" id="email" name="email" required>
-  </div>
+<div class="container mt-4">
+  <div class="row justify-content-center">
+    <div class="w-100" style="max-width: 576px;">
+      <h2 class="mb-4">Neues Mitglied erstellen</h2>
+      <form method="POST" action="/admin/add_member">
+        <div class="mb-3">
+          <label for="email" class="form-label">E-Mail-Adresse *</label>
+          <input type="email" class="form-control" id="email" name="email" required>
+        </div>
 
-  <div class="mb-3">
-    <label for="last_name" class="form-label">Nachname *</label>
-    <input type="text" class="form-control" id="last_name" name="last_name" required>
-  </div>
+        <div class="mb-3">
+          <label for="last_name" class="form-label">Nachname *</label>
+          <input type="text" class="form-control" id="last_name" name="last_name" required>
+        </div>
 
-  <div class="mb-3">
-    <label for="first_name" class="form-label">Vorname (optional)</label>
-    <input type="text" class="form-control" id="first_name" name="first_name">
-  </div>
+        <div class="mb-3">
+          <label for="first_name" class="form-label">Vorname (optional)</label>
+          <input type="text" class="form-control" id="first_name" name="first_name">
+        </div>
 
-  <div class="mb-3">
-    <label for="title" class="form-label">Titel *</label>
-    <select class="form-select" id="title" name="title" required>
-      <option value="F" selected>F</option>
-      <option value="CB">CB</option>
-      <option value="iaCB">iaCB</option>
-      <option value="AH">AH</option>
-    </select>
-  </div>
+        <div class="mb-3">
+          <label for="title" class="form-label">Titel *</label>
+          <select class="form-select" id="title" name="title" required>
+            <option value="F" selected>F</option>
+            <option value="CB">CB</option>
+            <option value="iaCB">iaCB</option>
+            <option value="AH">AH</option>
+          </select>
+        </div>
 
-  <div class="form-check mb-3">
-    <input class="form-check-input" type="checkbox" id="is_resident" name="is_resident" checked>
-    <label class="form-check-label" for="is_resident">
-      Wohnt im Corpshaus
-    </label>
-  </div>
+        <div class="form-check mb-3">
+          <input class="form-check-input" type="checkbox" id="is_resident" name="is_resident" checked>
+          <label class="form-check-label" for="is_resident">
+            Wohnt im Corpshaus
+          </label>
+        </div>
 
-  <div class="mb-3">
-    <label for="start_balance" class="form-label">Startguthaben (€)</label>
-    <input type="number" step="0.01" class="form-control" id="start_balance" name="start_balance" value="0.00">
-  </div>
+        <div class="mb-3">
+          <label for="start_balance" class="form-label">Startguthaben (€)</label>
+          <input type="number" step="0.01" class="form-control" id="start_balance" name="start_balance" value="0.00">
+        </div>
 
-  <button type="submit" class="btn btn-success w-100">Mitglied erstellen</button>
-</form>
+        <button type="submit" class="btn btn-success w-100">Mitglied erstellen</button>
+      </form>
+    </div>
+  </div>
+</div>
 {% endblock %}
