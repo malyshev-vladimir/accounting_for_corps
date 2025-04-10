@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for
 from decimal import Decimal, InvalidOperation
 
+from services.settings_loader import load_settings
 from services.members_io import load_all_members, save_all_members
 from models.member import Member, Title
 
@@ -22,26 +23,23 @@ def home():
 @app.route('/dashboard', methods=['POST'])
 def dashboard():
     """
-    Display the dashboard for a member after email login.
-
-    Retrieves the member data based on the submitted email address
-    and passes it to the dashboard template.
+    Display the member dashboard or redirect to admin panel if admin logs in.
 
     Returns:
-        str: Rendered dashboard for the selected member.
-        tuple: Error message and status code if member is not found.
+        Response: Redirect to admin panel or render member dashboard.
     """
     # Get the submitted email address from the login form
     email = request.form.get("email", "").strip()
 
-    # Load all members from storage
-    members = load_all_members()
+    # Check if user is admin
+    if email == load_settings().get("email_address"):
+        return redirect(url_for("admin_panel"))
 
-    # Check if the email is registered
+    # Check if user is a regular member
+    members = load_all_members()
     if email not in members:
         return f"No member found with this email: {email}", 404
 
-    # Retrieve member object and render dashboard
     member = members[email]
     return render_template("dashboard.html", member=member)
 
@@ -102,6 +100,7 @@ def add_member_from_form():
 
     # Redirect back to homepage
     return redirect(url_for("home"))
+
 
 
 if __name__ == '__main__':
