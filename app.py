@@ -44,63 +44,70 @@ def dashboard():
     return render_template("dashboard.html", member=member)
 
 
-@app.route('/add', methods=['POST'])
-def add_member_from_form():
+@app.route("/admin", methods=["GET"])
+def admin_panel():
     """
-    Create a new member from the submitted HTML form.
+    Admin dashboard with table of all members.
+    """
+    members = load_all_members()
+    return render_template("admin_members.html", members=members)
 
-    Validates input fields, creates a new Member object, and saves it
-    to the members database. Redirects to the homepage upon success.
 
-    Returns:
-        Response: Redirection to home or error message with HTTP status code.
+@app.route('/admin/add_member', methods=['GET', 'POST'])
+def admin_add_member():
+    """
+    Admin view: create a new member via form submission.
+    GET: show the form.
+    POST: process and save new member to members.json.
     """
     # Extract form fields
-    email = request.form.get("email", "").strip()
-    last_name = request.form.get("last_name", "").strip()
-    first_name = request.form.get("first_name", "").strip()
-    title = request.form.get("title", "").strip()
-    is_resident = request.form.get("is_resident") == "on"
-    start_balance_str = request.form.get("start_balance", "0.00").strip()
+    if request.method == 'POST':
+        email = request.form.get("email", "").strip()
+        last_name = request.form.get("last_name", "").strip()
+        first_name = request.form.get("first_name", "").strip()
+        title = request.form.get("title", "").strip()
+        is_resident = request.form.get("is_resident") == "on"
+        balance_str = request.form.get("start_balance", "0.00").strip()
 
-    # Validate email format
-    if "@" not in email or "." not in email:
-        return "Invalid email address.", 400
+        # Validate email format
+        if "@" not in email or "." not in email:
+            return "Invalid email address.", 400
 
-    # Validate and convert start balance to Decimal
-    try:
-        start_balance = Decimal(start_balance_str.replace(",", "."))
-    except InvalidOperation:
-        return "Invalid format for starting balance.", 400
+        # Validate and convert start balance to Decimal
+        try:
+            start_balance = Decimal(balance_str.replace(",", "."))
+        except InvalidOperation:
+            return "Invalid balance format", 400
 
-    # Validate title
-    if title not in Title._value2member_map_:
-        return "Invalid title.", 400
+        # Validate title
+        if title not in Title._value2member_map_:
+            return "Invalid title", 400
 
-    # Load existing members and check for duplicates
-    members = load_all_members()
-    if email in members:
-        return f"A member with email {email} already exists.", 400
+        # Load existing members and check for duplicates
+        members = load_all_members()
+        if email in members:
+            return f"Member with email {email} already exists.", 400
 
-    # Create new Member instance
-    member = Member(email=email, last_name=last_name, start_balance=start_balance)
+        # Create new Member instance
+        member = Member(email=email, last_name=last_name, start_balance=start_balance)
 
-    # Set optional fields
-    member.first_name = first_name
-    member.title = title
-    member.is_resident = is_resident
+        # Set optional fields
+        member.first_name = first_name
+        member.title = title
+        member.is_resident = is_resident
 
-    # Initialize history fields
-    member.title_history = {member.created_at: title}
-    member.resident_history = {member.created_at: is_resident}
+        # Initialize history fields
+        member.title_history = {member.created_at: title}
+        member.resident_history = {member.created_at: is_resident}
 
-    # Save the new member to storage
-    members[email] = member
-    save_all_members(members)
+        # Save the new member to storage
+        members[email] = member
+        save_all_members(members)
 
-    # Redirect back to homepage
-    return redirect(url_for("home"))
+        # Redirect back to admin-panel
+        return redirect(url_for("admin_panel"))
 
+    return render_template("admin_add_member.html")
 
 
 if __name__ == '__main__':
