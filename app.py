@@ -1,5 +1,6 @@
-from flask import Flask, render_template, request, redirect, url_for
+from flask import Flask, render_template, request, redirect, url_for, session, abort
 from decimal import Decimal, InvalidOperation
+from datetime import date, datetime
 
 from services.settings_loader import load_settings
 from services.members_io import load_all_members, save_all_members
@@ -113,6 +114,52 @@ def admin_add_member():
         return redirect(url_for("admin_panel"))
 
     return render_template("admin_add_member.html")
+
+
+@app.route("/admin/add_transaction", methods=["GET", "POST"])
+def admin_add_transaction():
+    """
+    Admin view: create a new transaction via form submission.
+    GET: show the transaction form.
+    POST: process and save the transaction to the selected member.
+    """
+    # Load all members from storage
+    members = load_all_members()
+
+    # Assign current title to each member for display in the dropdown
+    for m in members.values():
+        m.current_title = m.get_title_at(date.today().isoformat())
+
+    if request.method == "POST":
+        # Extract form data
+        email = request.form.get("email")
+        amount = float(request.form.get("amount"))
+        date_str = request.form.get("date")
+        description = request.form.get("description")
+
+
+        # Find the selected member
+        member = members.get(email)
+        if member:
+            # Append the transaction
+            member.transactions.append({
+                "date": date_str,
+                "description": description,
+                "amount": amount
+            })
+
+            # Save updated data
+            save_all_members(members)
+
+        # Redirect to admin panel
+        return redirect(url_for("admin_add_transaction"))
+
+    # Render the form
+    return render_template(
+        "admin_add_transaction.html",
+        members=members.values(),
+        current_date=date.today().isoformat()
+    )
 
 
 if __name__ == '__main__':
