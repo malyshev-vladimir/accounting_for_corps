@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session, abort
+from flask import Flask, render_template, request, redirect, url_for, session, abort, jsonify
 from decimal import Decimal, InvalidOperation
 from datetime import date, datetime
 
@@ -137,7 +137,6 @@ def admin_add_transaction():
         date_str = request.form.get("date")
         description = request.form.get("description")
 
-
         # Find the selected member
         member = members.get(email)
         if member:
@@ -152,14 +151,37 @@ def admin_add_transaction():
             save_all_members(members)
 
         # Redirect to admin panel
-        return redirect(url_for("admin_add_transaction"))
+        return redirect(url_for("admin_add_transaction", email=email))
+
+    selected_email = request.args.get("email")
+    selected_member = members.get(selected_email) if selected_email else None
 
     # Render the form
     return render_template(
         "admin_add_transaction.html",
         members=members.values(),
-        current_date=date.today().isoformat()
+        current_date=date.today().isoformat(),
+        selected_member=selected_member
     )
+
+
+@app.route("/admin/get_transactions")
+def get_transactions():
+    email = request.args.get("email")
+    members = load_all_members()
+    member = members.get(email)
+
+    if not member:
+        return jsonify([])
+
+    return jsonify([
+        {
+            "date": tx["date"],
+            "amount": tx["amount"],
+            "description": tx["description"]
+        }
+        for tx in reversed(member.transactions)
+    ])
 
 
 if __name__ == '__main__':

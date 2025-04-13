@@ -2,189 +2,247 @@
 
 {% block content %}
 <div class="container mt-4">
-  <div class="row justify-content-center">
-    <div class="w-100" style="max-width: 576px;">
-        <h2>Transaktion hinzufügen</h2>
-        <form method="post">
-            <label class="form-label">Mitglied</label>
-            <select class="form-select" name="email" required>
-                {% for member in members %}
-                <option value="{{ member.email }}">
-                    {{ member.current_title }} {{ member.last_name }} [{{ member.email }}]
-                </option>
-                {% endfor %}
-            </select>
+    <div class="row justify-content-center">
+        <div class="w-100" style="max-width: 576px;">
+            <h2>Transaktion hinzufügen</h2>
+            <form method="post">
+                <label class="form-label">Mitglied</label>
+                <select class="form-select" name="email" required>
+                    {% for member in members %}
+                    <option value="{{ member.email }}">
+                        {{ member.current_title }} {{ member.last_name }} [{{ member.email }}]
+                    </option>
+                    {% endfor %}
+                </select>
 
-            <label class="form-label mt-2">Datum</label>
-            <input type="date" name="date" class="form-control" id="date_form" value="{{ current_date }}" required>
+                <label class="form-label mt-2">Datum</label>
+                <input type="date" name="date" class="form-control" id="date_form" value="{{ current_date }}" required>
 
-            <label class="form-label mt-2">Betrag</label>
-            <input type="number" name="amount" step="0.01" class="form-control" required>
+                <label class="form-label mt-2">Betrag</label>
+                <input type="number" name="amount" step="0.01" class="form-control" required>
 
-            <label class="form-label mt-2">Transaktionstyp</label>
-            <select class="form-select" name="type" id="type" onchange="updateDescriptionAndExtras()" required>
-                <option value="1">Beliebig</option>
-                <option value="2">Getränkeabrechnung</option>
-                <option value="3">Gutschrift</option>
-                <option value="4">Strafe</option>
-                <option value="5">Rückerstattung (AaA)</option>
-            </select>
+                <label class="form-label mt-2">Transaktionstyp</label>
+                <select class="form-select" name="type" id="type" onchange="updateDescriptionAndExtras()" required>
+                    <option value="1">Beliebig</option>
+                    <option value="2">Getränkeabrechnung</option>
+                    <option value="3">Gutschrift</option>
+                    <option value="4">Strafe</option>
+                    <option value="5">Rückerstattung (AaA)</option>
+                </select>
 
-            <div id="description-field">
-                <label class="form-label mt-2">Beschreibung</label>
-                <input type="text" name="description" id="description" class="form-control">
-            </div>
+                <div id="description-field">
+                    <label class="form-label mt-2">Beschreibung</label>
+                    <input type="text" name="description" id="description" class="form-control">
+                </div>
 
-            <div id="extra-fields"></div>
+                <div id="extra-fields"></div>
 
 
-            <button type="submit" class="btn btn-primary mt-3">Hinzufügen</button>
-        </form>
+                <button type="submit" class="btn btn-primary mt-3">Hinzufügen</button>
+            </form>
+        </div>
+        <div class="w-100" style="max-width: 960px;">
+            <hr class="mt-5">
+            <h4>Transaktionen</h4>
+            <table class="table table-sm table-striped">
+                <thead>
+                <tr>
+                    <th class="text-center">Datum</th>
+                    <th class="text-center">Betrag</th>
+                    <th class="text-center">Beschreibung</th>
+                    <th class="text-center"></th>
+                </tr>
+                </thead>
+                <tbody id="transaction-body"></tbody>
+            </table>
+        </div>
     </div>
-  </div>
 </div>
 
 <script>
-function updateDescriptionAndExtras() {
-    const type = document.getElementById("type").value;
-    const extra = document.getElementById("extra-fields");
-    const descInput = document.querySelector("#description-field input");
+    function updateDescriptionAndExtras() {
+        const type = document.getElementById("type").value;
+        const extra = document.getElementById("extra-fields");
+        const descInput = document.querySelector("#description-field input");
 
-    // Clear extra fields and description text
-    extra.innerHTML = "";
-    descInput.value = "";
+        // Clear extra fields and description text
+        extra.innerHTML = "";
+        descInput.value = "";
 
-    // Enable description only for "Beliebig"
-    if (type === "1") {
-        descInput.readOnly = false;
-    } else {
-        descInput.readOnly = true;
-        descInput.style.backgroundColor = "#e9ecef";
-        descInput.style.cursor = "not-allowed";
+        // Enable description only for "Beliebig"
+        if (type === "1") {
+            descInput.readOnly = false;
+        } else {
+            descInput.readOnly = true;
+            descInput.style.backgroundColor = "#e9ecef";
+            descInput.style.cursor = "not-allowed";
 
-        // Type 2: Getränkeabrechnung
-        if (type === "2") {
-            extra.innerHTML = `
+            // Type 2: Getränkeabrechnung
+            if (type === "2") {
+                extra.innerHTML = `
                 <label class="form-label mt-2">Datum der Getränkeabrechnung</label>
                 <input type="date" name="drinks_report_date" id="drinks_report_date" class="form-control" required>
             `;
 
-            // Delay to ensure the field is rendered
-            setTimeout(() => {
-                const dateInput = document.getElementById("drinks_report_date");
-                if (dateInput) {
-                    // Initial fallback
-                    descInput.value = "Getränkeabrechnung von ... ";
+                // Delay to ensure the field is rendered
+                setTimeout(() => {
+                    const dateInput = document.getElementById("drinks_report_date");
+                    if (dateInput) {
+                        // Initial fallback
+                        descInput.value = "Getränkeabrechnung von ... ";
 
-                    // Update on user input
-                    dateInput.addEventListener("input", () => {
-                        const date = dateInput.value;
-                        descInput.value = date ? `Getränkeabrechnung vom ${date}` : "Getränkeabrechnung von {date}";
-                    });
-                }
-            }, 0);
-        }
+                        // Update on user input
+                        dateInput.addEventListener("input", () => {
+                            const date = dateInput.value;
+                            descInput.value = date ? `Getränkeabrechnung vom ${date}` : "Getränkeabrechnung von {date}";
+                        });
+                    }
+                }, 0);
+            }
 
-        // Type 3: Gutschrift
-        else if (type === "3") {
-            const dateInput = document.getElementById("date_form");
-            const dateValue = dateInput?.value;
+            // Type 3: Gutschrift
+            else if (type === "3") {
+                const dateInput = document.getElementById("date_form");
+                const dateValue = dateInput?.value;
 
-            const formattedDate = dateValue
-                ? (() => {
-                    const [yyyy, mm, dd] = dateValue.split("-");
-                    return `${dd}.${mm}.${yyyy}`;
-                })()
-                : "Datum";
+                const formattedDate = dateValue
+                    ? (() => {
+                        const [yyyy, mm, dd] = dateValue.split("-");
+                        return `${dd}.${mm}.${yyyy}`;
+                    })()
+                    : "Datum";
 
-            const value = `Gutschrift vom ${formattedDate}`;
-            descInput.value = value;
-        }
+                const value = `Gutschrift vom ${formattedDate}`;
+                descInput.value = value;
+            }
 
-        // Type 4: Strafe
-        else if (type === "4") {
-            descInput.value = "Strafe ( ... ) von ... ";
+            // Type 4: Strafe
+            else if (type === "4") {
+                descInput.value = "Strafe ( ... ) von ... ";
 
-            extra.innerHTML = `
-              <div class="row mt-3">
+                extra.innerHTML = `
+                <div class="row mt-3">
                 <div class="col-4">
-                  <label class="form-label">Protokollnummer</label>
-                  <input type="number" name="protocol_number" id="protocol_number" class="form-control" required>
+                    <label class="form-label">Protokollnummer</label>
+                    <input type="number" name="protocol_number" id="protocol_number" class="form-control" required>
                 </div>
                 <div class="col-3">
-                  <label class="form-label">Protokolltyp</label>
-                  <select class="form-select" name="protocol_type" id="protocol_type" required>
-                      <option value="AC">AC</option>
-                      <option value="CC">CC</option>
-                      <option value="GCC">GCC</option>
-                      <option value="FCC">FCC</option>
-                  </select>
+                    <label class="form-label">Protokolltyp</label>
+                    <select class="form-select" name="protocol_type" id="protocol_type" required>
+                        <option value="AC">AC</option>
+                        <option value="CC">CC</option>
+                        <option value="GCC">GCC</option>
+                        <option value="FCC">FCC</option>
+                    </select>
                 </div>
                 <div class="col-4">
-                  <label class="form-label">Semester</label>
-                  <select class="form-select" name="semester_type" id="semester_type" required>
-                      <option value="WiSe">WiSe</option>
-                      <option value="SoSe">SoSe</option>
-                  </select>
+                    <label class="form-label">Semester</label>
+                    <select class="form-select" name="semester_type" id="semester_type" required>
+                        <option value="WiSe">WiSe</option>
+                        <option value="SoSe">SoSe</option>
+                    </select>
                 </div>
-              </div>
+             </div>
             `;
 
-            setTimeout(() => {
-                const numberInput = document.getElementById("protocol_number");
-                const typeSelect = document.getElementById("protocol_type");
-                const semesterSelect = document.getElementById("semester_type");
-                const dateInput = document.getElementById("date_form");
+                setTimeout(() => {
+                    const numberInput = document.getElementById("protocol_number");
+                    const typeSelect = document.getElementById("protocol_type");
+                    const semesterSelect = document.getElementById("semester_type");
+                    const dateInput = document.getElementById("date_form");
 
-                const update = () => {
-                    const n = numberInput?.value || "...";
-                    const t = typeSelect?.value || "...";
-                    const s = semesterSelect?.value || "...";
-                    const d = dateInput?.value;
+                    const update = () => {
+                        const n = numberInput?.value || "...";
+                        const t = typeSelect?.value || "...";
+                        const s = semesterSelect?.value || "...";
+                        const d = dateInput?.value;
 
-                    const formattedDate = d
-                        ? (() => {
-                            const [yyyy, mm, dd] = d.split("-");
-                            return `${dd}.${mm}.${yyyy}`;
-                        })()
-                        : "Datum";
+                        const formattedDate = d
+                            ? (() => {
+                                const [yyyy, mm, dd] = d.split("-");
+                                return `${dd}.${mm}.${yyyy}`;
+                            })()
+                            : "Datum";
 
-                    descInput.value = `Strafe (${n}. ${t} ${s}) vom ${formattedDate}`;
-                };
+                        descInput.value = `Strafe (${n}. ${t} ${s}) vom ${formattedDate}`;
+                    };
 
-                numberInput?.addEventListener("input", update);
-                typeSelect?.addEventListener("change", update);
-                semesterSelect?.addEventListener("change", update);
-                dateInput?.addEventListener("input", update);
+                    numberInput?.addEventListener("input", update);
+                    typeSelect?.addEventListener("change", update);
+                    semesterSelect?.addEventListener("change", update);
+                    dateInput?.addEventListener("input", update);
 
-                update(); // initial
-            }, 0);
-        }
+                    update(); // initial
+                }, 0);
+            }
 
-        // Type 5: Rückerstattung
-        else if (type === "5") {
-            descInput.value = "Rückerstattung (AaA von {date})";
+            // Type 5: Rückerstattung
+            else if (type === "5") {
+                descInput.value = "Rückerstattung (AaA von {date})";
 
-            extra.innerHTML = `
+                extra.innerHTML = `
                 <label class="form-label mt-2">Datum des Antrags auf Auslagenrückerstattung</label>
                 <input type="date" name="refund_request_date" id="refund_request_date" class="form-control" required>
             `;
 
-            setTimeout(() => {
-                const dateInput = document.getElementById("refund_request_date");
-                if (dateInput) {
-                    dateInput.addEventListener("input", () => {
-                        const date = dateInput.value;
-                        const value = date ? `Rückerstattung (AaA von ${date})` : "Rückerstattung (AaA von {date})";
-                        descInput.value = value;
-                    });
-                }
-            }, 0);
+                setTimeout(() => {
+                    const dateInput = document.getElementById("refund_request_date");
+                    if (dateInput) {
+                        dateInput.addEventListener("input", () => {
+                            const date = dateInput.value;
+                            const value = date ? `Rückerstattung (AaA von ${date})` : "Rückerstattung (AaA von {date})";
+                            descInput.value = value;
+                        });
+                    }
+                }, 0);
+            }
         }
     }
+
+    // Call the function once when the page loads
+    window.addEventListener("DOMContentLoaded", updateDescriptionAndExtras);
+</script>
+<script>
+function loadTransactions(email) {
+    fetch(`/admin/get_transactions?email=${encodeURIComponent(email)}`)
+        .then(res => res.json())
+        .then(data => {
+            const tbody = document.getElementById("transaction-body");
+            tbody.innerHTML = "";
+            data.forEach(tx => {
+                const tr = document.createElement("tr");
+                tr.innerHTML = `
+                    <td style="width: 90px;">${tx.date}</td>
+                    <td class="text-center">${tx.amount}</td>
+                    <td>${tx.description}</td>
+                    <td>
+                        <a href=""
+                        class="text-decoration-none text-primary">
+                            <i class="bi bi-pencil-square"></i>
+                        </a>
+                        <a href=""
+                        class="text-decoration-none text-danger"
+                        title="Löschen"
+                        onclick="return confirm('Bist du sicher, dass du dieses Mitglied löschen möchtest?');">
+                            <i class="bi bi-trash"></i>
+                        </a>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        });
 }
 
-// Call the function once when the page loads
-window.addEventListener("DOMContentLoaded", updateDescriptionAndExtras);
+document.addEventListener("DOMContentLoaded", () => {
+    const emailSelect = document.querySelector('select[name="email"]');
+    if (emailSelect) {
+        const email = emailSelect.value;
+        loadTransactions(email);
+
+        emailSelect.addEventListener("change", () => {
+            loadTransactions(emailSelect.value);
+        });
+    }
+});
 </script>
 {% endblock %}
