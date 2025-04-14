@@ -4,6 +4,7 @@ from datetime import date, datetime
 
 from services.settings_loader import load_settings
 from services.members_io import load_all_members, save_all_members
+from services.monthly_payments import add_missing_monthly_payments
 from models.member import Member, Title
 
 # Initialize the Flask application
@@ -12,23 +13,13 @@ app = Flask(__name__)
 
 @app.route('/', methods=['GET'])
 def home():
-    """
-    Display the home page with the email login form.
-
-    Returns:
-        str: Rendered HTML content of the login page.
-    """
+    """Display the home page with the email login form."""
     return render_template("index.html")
 
 
 @app.route('/dashboard', methods=['POST'])
 def dashboard():
-    """
-    Display the member dashboard or redirect to admin panel if admin logs in.
-
-    Returns:
-        Response: Redirect to admin panel or render member dashboard.
-    """
+    """Display the member dashboard or redirect to admin panel if admin logs in."""
     # Get the submitted email address from the login form
     email = request.form.get("email", "").strip()
 
@@ -47,9 +38,7 @@ def dashboard():
 
 @app.route("/admin", methods=["GET"])
 def admin_panel():
-    """
-    Admin dashboard with table of all members.
-    """
+    """Display the admin dashboard with a table of all members."""
     members = load_all_members()
 
     # Sort by created_at
@@ -63,8 +52,9 @@ def admin_panel():
 def admin_add_member():
     """
     Admin view: create a new member via form submission.
-    GET: show the form.
-    POST: process and save new member to members.json.
+
+    GET: Show the form.
+    POST: Process and save new member to members.json.
     """
     # Extract form fields
     if request.method == 'POST':
@@ -116,10 +106,30 @@ def admin_add_member():
     return render_template("admin_add_member.html")
 
 
+@app.route("/admin/check_monthly_payments")
+def check_monthly_payments():
+    """
+    Admin action: verify and add any missing monthly contributions for all members.
+
+    Returns:
+        Response: Redirect back to the admin panel after updating contributions.
+    """
+    members = load_all_members()
+    today = datetime.today()
+
+    for member in members.values():
+        add_missing_monthly_payments(member, today)
+
+    save_all_members(members)
+
+    return redirect(url_for("admin_panel"))
+
+
 @app.route("/admin/add_transaction", methods=["GET", "POST"])
 def admin_add_transaction():
     """
     Admin view: create a new transaction via form submission.
+
     GET: show the transaction form.
     POST: process and save the transaction to the selected member.
     """
@@ -185,7 +195,5 @@ def get_transactions():
 
 
 if __name__ == '__main__':
-    """
-    Run the Flask development server when this script is executed directly.
-    """
+    """Run the Flask development server when this script is executed directly."""
     app.run(debug=True)

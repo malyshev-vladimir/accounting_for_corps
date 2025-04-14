@@ -1,4 +1,8 @@
 {
   "email_address": "your_email@gmail.com",
-  "email_password": "abcdeftuvwxyz1234"
+  "email_password": "abcdeftuvwxyz1234",
+  "monthly_payments": {
+    "monthly_payment_for_residents": 15.0,
+    "monthly_payment_for_non_residents": 12.5
+  }
 }
