@@ -1,0 +1,100 @@
+{% extends "admin_base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+  <h2 class="mb-4">Title ändern</h2>
+  <form id="statusForm">
+    <div class="table-responsive">
+      <table class="table table-striped align-middle text-center">
+        <thead class="table-dark">
+          <tr>
+            <th>Name</th>
+            <th>Title</th>
+            <th style="max-width: 15px;"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for member in members %}
+          <tr>
+            <td>{{ member.last_name }}</td>
+            <td>
+              <select class="form-select form-select-sm"
+                      data-email="{{ member.email }}"
+                      data-original="{{ member.current_title }}"
+                      onchange="markChanged(this)">
+                {% for t in possible_titles %}
+                <option value="{{ t }}"
+                        title="{{ title_labels[t] }}"
+                        {% if member.current_title == t %}selected{% endif %}>
+                  {{ t }}
+                </option>
+                {% endfor %}
+              </select>
+            </td>
+            <td><span class="status-indicator">
+              <i class="bi bi-check-circle text-success"></i>
+            </span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <button type="submit" class="btn btn-primary mt-3">Save titles</button>
+  </form>
+
+  <div id="saveResult" class="mt-3 text-success" style="display: none;">
+    ✔ Changes saved
+  </div>
+</div>
+
+<script>
+function markChanged(selectElement) {
+  const original = selectElement.dataset.original;
+  const current = selectElement.value;
+  const statusCell = selectElement.closest("tr").querySelector(".status-indicator");
+
+  if (original === current) {
+    statusCell.innerHTML = '<i class="bi bi-check-circle text-success"></i>';
+  } else {
+    statusCell.innerHTML = '<i class="bi bi-pencil-square text-warning"></i>';
+  }
+}
+
+document.getElementById("statusForm").addEventListener("submit", function(event) {
+  event.preventDefault();
+
+  const selects = document.querySelectorAll("select[data-email]");
+  const updates = [];
+
+  selects.forEach(sel => {
+    const email = sel.dataset.email;
+    const original = sel.dataset.original;
+    const current = sel.value;
+
+    if (original !== current) {
+      updates.push({ email: email, new_title: current });
+    }
+  });
+
+  if (updates.length === 0) return;
+
+  fetch("/update_titles_bulk", {
+    method: "POST",
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ updates: updates })
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.success) {
+      document.getElementById("saveResult").style.display = "block";
+      selects.forEach(sel => {
+        sel.dataset.original = sel.value;
+        markChanged(sel);
+      });
+    }
+  });
+});
+</script>
+{% endblock %}

@@ -175,6 +175,83 @@ def admin_add_transaction():
     )
 
 
+@app.route('/admin/change_title')
+def admin_change_title():
+    """
+    Admin view: display a table with all members and allow changing their title.
+
+    GET: Show a table where each member has a dropdown to update their current title.
+         The current title is pre-selected based on today's date.
+    """
+    # Get today's date as ISO string (YYYY-MM-DD)
+    today_str = date.today().isoformat()
+
+    # Load all members from file
+    members = load_all_members()
+
+    # Load all members and prepare simplified data for template rendering
+    member_data = [
+        {
+            'email': m.email,
+            'last_name': m.last_name,
+            'current_title': m.get_title_at(today_str)
+        }
+        for m in members.values()
+    ]
+
+    # Mapping of title codes to human-readable descriptions
+    title_labels = {
+        "F": "Fuchs",
+        "CB": "Corpsbursch",
+        "iaCB": "inaktiver Corpsbursch",
+        "AH": "Alter Herr"
+    }
+
+    # Render the page with member list and dropdown options
+    return render_template(
+        'admin_change_title.html',
+        members=member_data,
+        possible_titles=[t.value for t in Title],
+        title_labels=title_labels
+    )
+
+
+@app.route('/update_titles_bulk', methods=['POST'])
+def update_titles_bulk():
+    """
+    Admin action: update titles for multiple members at once.
+
+    POST: Accepts a JSON list of updates, each with email and new_title.
+    """
+    data = request.get_json()
+    updates = data.get("updates", [])
+
+    if not isinstance(updates, list):
+        return jsonify({"success": False}), 400
+
+    members = load_all_members()
+    today = date.today().isoformat()
+
+    for update in updates:
+        email = update.get("email")
+        new_title = update.get("new_title")
+
+        if not email or not new_title:
+            continue
+
+        if new_title not in Title._value2member_map_:
+            continue
+
+        member = members.get(email)
+        if not member:
+            continue
+
+        member.title_history[today] = new_title
+
+    save_all_members(members)
+    return jsonify({"success": True})
+
+
 @app.route("/admin/get_transactions")
 def get_transactions():
     email = request.args.get("email")
