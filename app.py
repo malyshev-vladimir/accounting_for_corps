@@ -175,6 +175,20 @@ def admin_add_transaction():
     )
 
 
+@app.route('/delete_transaction/<email>/<int:transaction_id>', methods=['POST'])
+def delete_transaction(email, transaction_id):
+    members = load_all_members()
+    member = members.get(email)
+    if not member:
+        return "Member not found", 404
+
+    if 0 <= transaction_id < len(member.transactions):
+        del member.transactions[transaction_id]
+        save_all_members(members)
+        return '', 204
+    return "Transaction not found", 404
+
+
 @app.route('/admin/change_title')
 def admin_change_title():
     """
@@ -261,13 +275,15 @@ def get_transactions():
     if not member:
         return jsonify([])
 
+    # Сохраняем реальный индекс, но отображаем в обратном порядке
     return jsonify([
         {
+            "id": i,  # ← настоящий индекс
             "date": tx["date"],
             "amount": tx["amount"],
             "description": tx["description"]
         }
-        for tx in reversed(member.transactions)
+        for i, tx in reversed(list(enumerate(member.transactions)))
     ])
 
 

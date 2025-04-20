@@ -2,7 +2,6 @@ import json
 import os
 from models.member import Member
 
-
 FILENAME = "data/members.json"
 
 
@@ -34,6 +33,7 @@ def save_all_members(members: dict):
     Side effects:
         Writes a JSON file to disk with properly formatted and indented content.
     """
-    data = {email: member.to_dict for email, member in members.items()}
+
+    data = {email: m.to_dict for email, m in members.items()}
     with open(FILENAME, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4, ensure_ascii=False)

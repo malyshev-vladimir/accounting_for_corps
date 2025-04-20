@@ -203,46 +203,67 @@
     window.addEventListener("DOMContentLoaded", updateDescriptionAndExtras);
 </script>
 <script>
-function loadTransactions(email) {
-    fetch(`/admin/get_transactions?email=${encodeURIComponent(email)}`)
-        .then(res => res.json())
-        .then(data => {
-            const tbody = document.getElementById("transaction-body");
-            tbody.innerHTML = "";
-            data.forEach(tx => {
-                const tr = document.createElement("tr");
-                tr.innerHTML = `
-                    <td style="width: 90px;">${tx.date}</td>
-                    <td class="text-center">${tx.amount}</td>
-                    <td>${tx.description}</td>
-                    <td>
-                        <a href=""
-                        class="text-decoration-none text-primary">
-                            <i class="bi bi-pencil-square"></i>
-                        </a>
-                        <a href=""
-                        class="text-decoration-none text-danger"
-                        title="Löschen"
-                        onclick="return confirm('Bist du sicher, dass du dieses Mitglied löschen möchtest?');">
-                            <i class="bi bi-trash"></i>
-                        </a>
-                    </td>
-                `;
-                tbody.appendChild(tr);
+    function loadTransactions(email) {
+        fetch(`/admin/get_transactions?email=${encodeURIComponent(email)}`)
+            .then(res => res.json())
+            .then(data => {
+                const tbody = document.getElementById("transaction-body");
+                tbody.innerHTML = "";
+                data.forEach((tx) => {
+                    const tr = document.createElement("tr");
+                    tr.innerHTML = `
+                        <td style="width: 90px;">${tx.date}</td>
+                        <td class="text-center">${tx.amount}</td>
+                        <td>${tx.description}</td>
+                        <td>
+                            <a href="#"
+                               class="text-decoration-none text-danger"
+                               title="Löschen"
+                               onclick="deleteTransaction('${email}', ${tx.id}, this); return false;">
+                                <i class="bi bi-trash"></i>
+                            </a>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
             });
-        });
-}
-
-document.addEventListener("DOMContentLoaded", () => {
-    const emailSelect = document.querySelector('select[name="email"]');
-    if (emailSelect) {
-        const email = emailSelect.value;
-        loadTransactions(email);
-
-        emailSelect.addEventListener("change", () => {
-            loadTransactions(emailSelect.value);
-        });
     }
-});
+
+    document.addEventListener("DOMContentLoaded", () => {
+        const emailSelect = document.querySelector('select[name="email"]');
+        if (emailSelect) {
+            const email = emailSelect.value;
+            loadTransactions(email);
+
+            emailSelect.addEventListener("change", () => {
+                loadTransactions(emailSelect.value);
+            });
+        }
+    });
+</script>
+<script>
+    function deleteTransaction(email, transactionId, element) {
+        if (!confirm('Bist du sicher, dass du diese Transaktion löschen möchtest?')) {
+            return;
+        }
+
+        fetch(`/delete_transaction/${email}/${transactionId}`, {
+            method: 'POST'
+        })
+            .then(response => {
+                if (response.ok) {
+                    const row = element.closest('tr');
+                    row.remove();
+                } else {
+                    response.text().then(text => {
+                        alert('Fehler beim Löschen: ' + text);
+                    });
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Netzwerkfehler beim Löschen.');
+            });
+    }
 </script>
 {% endblock %}
