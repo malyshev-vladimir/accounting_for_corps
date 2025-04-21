@@ -1,8 +1,21 @@
-# Default ignored files
-/shelf/
-/workspace.xml
-# Editor-based HTTP Client requests
-/httpRequests/
-# Datasource local storage ignored files
-/dataSources/
-/dataSources.local.xml
+# Sensitive config files
+.env
+config/settings.json
+
+# Python cache and temporary files
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.db
+
+# Log files
+*.log
+
+# PyCharm project files
+.idea/
+*.iml
+
+# System-specific files
+.DS_Store
+Thumbs.db
