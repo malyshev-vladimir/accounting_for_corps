@@ -1,6 +1,5 @@
 # Sensitive config files
 .env
-config/settings.json
 
 # Python cache and temporary files
 __pycache__/
