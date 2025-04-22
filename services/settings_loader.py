@@ -1,36 +1,29 @@
-import json
 import os
+from dotenv import load_dotenv
 
-# Define the path to the settings file
-SETTINGS_PATH = os.path.join("config", "settings.json")
+# Load environment variables from .env
+load_dotenv()
 
 
-def load_settings():
+def get_admin_email() -> str:
     """
-    Loads application-wide settings from a JSON file.
+    Returns the configured administrator email from environment.
 
     Returns:
-        dict: A dictionary containing settings loaded from config/settings.json.
-
-    Raises:
-        FileNotFoundError: If the settings file is missing.
-        json.JSONDecodeError: If the file is not a valid JSON.
+        str: The admin email address.
     """
-    with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)
+    return os.getenv("EMAIL_ADDRESS", "").lower()
 
 
 def get_monthly_payment_for_residents():
     """
     Returns the configured monthly payment for residents of house.
-    Falls back to 15.0 if not defined in settings.
     """
-    return load_settings().get("monthly_payments", {}).get("monthly_payment_for_residents", 15.0)
+    return float(os.environ["MONTHLY_PAYMENT_RESIDENTS"])
 
 
 def get_monthly_payment_for_non_residents():
     """
     Returns the configured monthly payment for non-residents of house.
-    Falls back to 12.5 if not defined in settings.
     """
-    return load_settings().get("monthly_payments", {}).get("monthly_payment_for_non_residents", 12.5)
+    return float(os.environ["MONTHLY_PAYMENT_NON_RESIDENTS"])

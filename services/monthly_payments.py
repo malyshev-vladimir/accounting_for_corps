@@ -2,7 +2,6 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from decimal import Decimal
 
-from services.members_io import load_all_members, save_all_members
 from services.settings_loader import get_monthly_payment_for_residents, get_monthly_payment_for_non_residents
 
 

@@ -1,9 +1,10 @@
-from flask import Flask, render_template, request, redirect, url_for, session, abort, jsonify
+from flask import Flask, render_template, request, redirect, url_for, jsonify
 from decimal import Decimal, InvalidOperation
 from datetime import date, datetime
 
-from services.settings_loader import load_settings
-from services.members_io import load_all_members, save_all_members
+from db import get_cursor
+from services.settings_loader import get_admin_email
+from services.members_db import load_member, save_member, load_all_members
 from services.monthly_payments import add_missing_monthly_payments
 from models.member import Member, Title
 
@@ -13,50 +14,66 @@ app = Flask(__name__)
 
 @app.route('/', methods=['GET'])
 def home():
-    """Display the home page with the email login form."""
+    """
+    Display the home page with the email login form.
+
+    GET: Render the index login page.
+    """
     return render_template("index.html")
 
 
 @app.route('/dashboard', methods=['POST'])
 def dashboard():
-    """Display the member dashboard or redirect to admin panel if admin logs in."""
-    # Get the submitted email address from the login form
-    email = request.form.get("email", "").strip()
+    """
+    Display the member dashboard or redirect to admin panel if admin logs in.
 
-    # Check if user is admin
-    if email == load_settings().get("email_address"):
+    POST: Accept member email from login form and redirect accordingly.
+    """
+    email = request.form.get("email", "").strip().lower()
+
+    # Redirect admin users to the admin panel
+    if email == get_admin_email():
         return redirect(url_for("admin_panel"))
 
-    # Check if user is a regular member
-    members = load_all_members()
-    if email not in members:
+    # Load the member from the database
+    try:
+        member = load_member(email)
+    except ValueError:
         return f"No member found with this email: {email}", 404
 
-    member = members[email]
+    # Render the dashboard for the member
     return render_template("dashboard.html", member=member)
 
 
 @app.route("/admin", methods=["GET"])
 def admin_panel():
-    """Display the admin dashboard with a table of all members."""
-    members = load_all_members()
+    """
+    Display the admin dashboard with a table of all members.
 
-    # Sort by created_at
+    GET: Render a sorted list of all members.
+    """
+    try:
+        members = load_all_members()
+    except Exception as e:
+        return f"Error loading members: {e}", 500
+
+    # Sort members by creation date (newest first)
     sorted_members = dict(
         sorted(members.items(), key=lambda item: item[1].created_at, reverse=True)
     )
+
+    # Render the admin member list
     return render_template("admin_members.html", members=sorted_members)
 
 
 @app.route('/admin/add_member', methods=['GET', 'POST'])
 def admin_add_member():
     """
-    Admin view: create a new member via form submission.
+    Allow admin to create a new member via form submission.
 
-    GET: Show the form.
-    POST: Process and save new member to members.json.
+    GET: Render the add member form.
+    POST: Validate and save the new member to the database.
     """
-    # Extract form fields
     if request.method == 'POST':
         email = request.form.get("email", "").strip()
         last_name = request.form.get("last_name", "").strip()
@@ -65,108 +82,121 @@ def admin_add_member():
         is_resident = request.form.get("is_resident") == "on"
         balance_str = request.form.get("start_balance", "0.00").strip()
 
-        # Validate email format
+        # Validate the email format
         if "@" not in email or "." not in email:
             return "Invalid email address.", 400
 
-        # Validate and convert start balance to Decimal
+        # Convert balance string to Decimal
         try:
             start_balance = Decimal(balance_str.replace(",", "."))
         except InvalidOperation:
             return "Invalid balance format", 400
 
-        # Validate title
+        # Validate title value
         if title not in Title._value2member_map_:
             return "Invalid title", 400
 
-        # Load existing members and check for duplicates
-        members = load_all_members()
-        if email in members:
+        # Check if member already exists
+        try:
+            load_member(email)
             return f"Member with email {email} already exists.", 400
+        except ValueError:
+            pass
 
-        # Create new Member instance
+        # Create a new Member instance
         member = Member(email=email, last_name=last_name, start_balance=start_balance)
-
-        # Set optional fields
         member.first_name = first_name
         member.title = title
         member.is_resident = is_resident
-
-        # Initialize history fields
         member.title_history = {member.created_at: title}
         member.resident_history = {member.created_at: is_resident}
 
-        # Save the new member to storage
-        members[email] = member
-        save_all_members(members)
+        # Save the new member to the database
+        save_member(member)
 
-        # Redirect back to admin-panel
+        # Redirect to the admin panel
         return redirect(url_for("admin_panel"))
 
+    # Render the add member form
     return render_template("admin_add_member.html")
 
 
 @app.route("/admin/check_monthly_payments")
 def check_monthly_payments():
     """
-    Admin action: verify and add any missing monthly contributions for all members.
+    Check and add any missing monthly contributions for all members.
 
-    Returns:
-        Response: Redirect back to the admin panel after updating contributions.
+    GET: Update payment records for each member and redirect to admin panel.
     """
-    members = load_all_members()
     today = datetime.today()
 
-    for member in members.values():
-        add_missing_monthly_payments(member, today)
+    # Fetch all member email addresses from the database
+    with get_cursor() as cur:
+        cur.execute("SELECT email FROM members ORDER BY last_name, first_name")
+        emails = [row[0] for row in cur.fetchall()]
 
-    save_all_members(members)
+    # Load, update, and save each member individually
+    for email in emails:
+        try:
+            member = load_member(email)
+            add_missing_monthly_payments(member, today)
+            save_member(member)
+        except Exception as e:
+            print(f"[!] Error processing {email}: {e}")
 
+    # Redirect back to the admin panel
     return redirect(url_for("admin_panel"))
 
 
 @app.route("/admin/add_transaction", methods=["GET", "POST"])
 def admin_add_transaction():
     """
-    Admin view: create a new transaction via form submission.
+    Add a new transaction for a selected member.
 
-    GET: show the transaction form.
-    POST: process and save the transaction to the selected member.
+    GET: Display the transaction form with a list of members.
+    POST: Process submitted transaction and update the selected member.
     """
-    # Load all members from storage
-    members = load_all_members()
+    # Load list of email addresses
+    with get_cursor() as cur:
+        cur.execute("SELECT email FROM members ORDER BY last_name, first_name")
+        emails = [row[0] for row in cur.fetchall()]
 
-    # Assign current title to each member for display in the dropdown
-    for m in members.values():
-        m.current_title = m.get_title_at(date.today().isoformat())
+    # Load full member objects
+    members = {}
+    for email in emails:
+        try:
+            member = load_member(email)
+            member.current_title = member.get_title_at(date.today().isoformat())
+            members[email] = member
+        except Exception as e:
+            print(f"[!] Failed to load member {email}: {e}")
 
+    # Save transaction (POST)
     if request.method == "POST":
-        # Extract form data
         email = request.form.get("email")
         amount = float(request.form.get("amount"))
         date_str = request.form.get("date")
         description = request.form.get("description")
 
-        # Find the selected member
-        member = members.get(email)
-        if member:
-            # Append the transaction
-            member.transactions.append({
-                "date": date_str,
-                "description": description,
-                "amount": amount
-            })
+        try:
+            member = load_member(email)
+            member.add_transaction(date_str, description, amount)
+            save_member(member)
+        except Exception as e:
+            return f"Error adding transaction: {e}", 400
 
-            # Save updated data
-            save_all_members(members)
-
-        # Redirect to admin panel
         return redirect(url_for("admin_add_transaction", email=email))
 
+    # Load selected member (GET)
     selected_email = request.args.get("email")
-    selected_member = members.get(selected_email) if selected_email else None
+    selected_member = None
+    if selected_email:
+        try:
+            selected_member = load_member(selected_email)
+        except Exception as e:
+            print(f"[!] Could not load selected member: {e}")
 
-    # Render the form
+    # Render template
     return render_template(
         "admin_add_transaction.html",
         members=members.values(),
@@ -177,33 +207,36 @@ def admin_add_transaction():
 
 @app.route('/delete_transaction/<email>/<int:transaction_id>', methods=['POST'])
 def delete_transaction(email, transaction_id):
-    members = load_all_members()
-    member = members.get(email)
-    if not member:
+    """
+    Delete a specific transaction from a member by its index.
+
+    POST: Remove the transaction and save the updated member.
+    """
+    try:
+        member = load_member(email)
+    except ValueError:
         return "Member not found", 404
 
-    if 0 <= transaction_id < len(member.transactions):
-        del member.transactions[transaction_id]
-        save_all_members(members)
-        return '', 204
-    return "Transaction not found", 404
+    if not (0 <= transaction_id < len(member.transactions)):
+        return "Transaction not found", 404
+
+    # Delete the transaction by index and save it
+    del member.transactions[transaction_id]
+    save_member(member)
+    return '', 204
 
 
 @app.route('/admin/change_title')
 def admin_change_title():
     """
-    Admin view: display a table with all members and allow changing their title.
+    Display the form for editing member titles.
 
-    GET: Show a table where each member has a dropdown to update their current title.
-         The current title is pre-selected based on today's date.
+    GET: Show table of all members with dropdown to update their title.
     """
-    # Get today's date as ISO string (YYYY-MM-DD)
     today_str = date.today().isoformat()
 
-    # Load all members from file
-    members = load_all_members()
-
     # Load all members and prepare simplified data for template rendering
+    members = load_all_members()
     member_data = [
         {
             'email': m.email,
@@ -233,52 +266,64 @@ def admin_change_title():
 @app.route('/update_titles_bulk', methods=['POST'])
 def update_titles_bulk():
     """
-    Admin action: update titles for multiple members at once.
+    Bulk update titles for multiple members.
 
-    POST: Accepts a JSON list of updates, each with email and new_title.
+    POST: Accept a JSON array of updates, apply title changes, and return a summary.
     """
+    # Parse request body as JSON
     data = request.get_json()
     updates = data.get("updates", [])
 
+    # Validate format
     if not isinstance(updates, list):
         return jsonify({"success": False}), 400
 
-    members = load_all_members()
     today = date.today().isoformat()
+    updated = 0  # Counter to track how many updates were successful
 
+    # Iterate through all submitted updates
     for update in updates:
         email = update.get("email")
         new_title = update.get("new_title")
 
+        # Validate input fields
         if not email or not new_title:
             continue
-
         if new_title not in Title._value2member_map_:
             continue
 
-        member = members.get(email)
-        if not member:
-            continue
+        try:
+            member = load_member(email)
+            member.title_history[today] = new_title
+            save_member(member)
+            updated += 1
 
-        member.title_history[today] = new_title
+        except Exception as e:
+            print(f"[!] Failed to update {email}: {e}")
 
-    save_all_members(members)
-    return jsonify({"success": True})
+    return jsonify({"success": True, "updated": updated})
 
 
 @app.route("/admin/get_transactions")
 def get_transactions():
-    email = request.args.get("email")
-    members = load_all_members()
-    member = members.get(email)
+    """
+    Return all transactions for a given member.
 
-    if not member:
+    GET: Accept member email as a query parameter and return transactions as JSON.
+    """
+    # Get the email parameter from the query string
+    email = request.args.get("email")
+
+    # Try to load the member from the database
+    try:
+        member = load_member(email)
+    except ValueError:
         return jsonify([])
 
-    # Сохраняем реальный индекс, но отображаем в обратном порядке
+    # Return the transactions in reverse order with their real index
     return jsonify([
         {
-            "id": i,  # ← настоящий индекс
+            "id": i,  # real index in the original list
             "date": tx["date"],
             "amount": tx["amount"],
             "description": tx["description"]

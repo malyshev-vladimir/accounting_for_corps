@@ -1,6 +1,6 @@
 from datetime import datetime
-from enum import Enum
 from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
+from enum import Enum
 
 
 class Title(Enum):
@@ -12,7 +12,7 @@ class Title(Enum):
 
 class Member:
     def __init__(self, email: str, last_name: str, first_name: str = "",
-                 title: str = "F", is_resident: bool = True, start_balance: float = 0.0):
+                 title: str = "F", is_resident: bool = True, start_balance: Decimal = Decimal("0.00")):
         """
         Initialize a new Member with identity, title, residency, and financial data.
 
@@ -22,7 +22,7 @@ class Member:
             first_name (str): First name of the member (optional).
             title (str): Current title/status of the member (e.g., "CB", "AH").
             is_resident (bool): Whether the member lives in the community house.
-            start_balance (float): Starting account balance (default is 0.0).
+            start_balance (Decimal): Starting account balance (default is 0.0).
         """
         self.email = email
         self.last_name = last_name.strip()

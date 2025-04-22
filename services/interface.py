@@ -1,7 +1,7 @@
 from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
 
-from services.members_io import load_all_members, save_all_members
+from services.members_db import save_member, load_all_members
 from models.member import Title
 
 
@@ -19,7 +19,7 @@ def change_member_title():
     emails = list(members.keys())
     for i, email in enumerate(emails, 1):
         m = members[email]
-        print(f"{i}. {m.title} {m.name} ({email})")
+        print(f"{i}. {m.title} {m.last_name} ({email})")
 
     try:
         index = int(input("Select member number: "))
@@ -40,12 +40,12 @@ def change_member_title():
         return
 
     today = datetime.today().strftime("%Y-%m-%d")
-    member.title_history[new_title] = today
+    member.title_history[today] = new_title
 
     # Save updated member data
-    save_all_members(members)
+    save_member(member)
 
-    print(f"[✓] Title '{new_title}' assigned to {member.name} ({member.email}) as of {today}.")
+    print(f"[✓] Title '{new_title}' assigned to {member.last_name} ({member.email}) as of {today}.")
 
 
 def input_valid_date():
