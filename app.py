@@ -3,6 +3,7 @@ from decimal import Decimal, InvalidOperation
 from datetime import date, datetime
 
 from db import get_cursor
+from services.report_sender import send_report_email
 from services.settings_loader import get_admin_email
 from services.members_db import load_member, save_member, load_all_members
 from services.monthly_payments import add_missing_monthly_payments
@@ -302,6 +303,36 @@ def update_titles_bulk():
             print(f"[!] Failed to update {email}: {e}")
 
     return jsonify({"success": True, "updated": updated})
+
+
+@app.route("/send_report", methods=["POST"])
+def send_report():
+    """
+    Send a transaction report email to a specific member.
+
+    POST: Accepts a JSON body with member email, generates a personalized report,
+          and sends it via email using the configured SMTP credentials.
+    """
+    data = request.get_json()
+    email = data.get("email")
+
+    # Validate that the email is provided
+    if not email:
+        return jsonify({"error": "Email fehlt"}), 400
+
+    # Try to load the member from the database
+    try:
+        member = load_member(email)
+    except ValueError:
+        return jsonify({"error": "Mitglied nicht gefunden"}), 404
+
+    # Generate and send the email report
+    try:
+        send_report_email(member)
+        return jsonify({"success": True}), 200
+    except Exception as e:
+        print(f"[!] Fehler beim Senden an {email}: {e}")
+        return jsonify({"error": "Senden fehlgeschlagen"}), 500
 
 
 @app.route("/admin/get_transactions")
