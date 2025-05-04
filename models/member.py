@@ -1,6 +1,12 @@
-from datetime import datetime
-from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
+from datetime import datetime, date
+from decimal import Decimal
 from enum import Enum
+from typing import List
+
+from db import get_cursor
+from models.transaction import Transaction
+from models.validators import parse_decimal
+from services.transactions_db import load_transactions_by_email
 
 
 class Title(Enum):
@@ -11,170 +17,204 @@ class Title(Enum):
 
 
 class Member:
-    def __init__(self, email: str, last_name: str, first_name: str = "",
-                 title: str = "F", is_resident: bool = True, start_balance: Decimal = Decimal("0.00")):
+    def __init__(self,
+                 email: str,
+                 last_name: str,
+                 first_name: str = "",
+                 title: str = "F",
+                 is_resident: bool = True,
+                 created_at: date = None,
+                 start_balance: Decimal = Decimal("0.00"),
+                 ):
         """
         Initialize a new Member with identity, title, residency, and financial data.
 
         Args:
             email (str): Unique identifier and contact email of the member.
             last_name (str): Last name of the member.
-            first_name (str): First name of the member (optional).
-            title (str): Current title/status of the member (e.g., "CB", "AH").
-            is_resident (bool): Whether the member lives in the community house.
-            start_balance (Decimal): Starting account balance (default is 0.0).
+            first_name (str): First name of the member (default: "").
+            title (str): Current title/status of the member default: "F").
+            is_resident (bool): Whether the member lives in the community house (default: True).
+            created_at (date): Creating date of the member (default: today)
+            start_balance (Decimal): Starting account balance (default: 0.00).
         """
+
         self.email = email
         self.last_name = last_name.strip()
         self.first_name = first_name.strip()
         self.title = title
         self.is_resident = is_resident
-        self.created_at = datetime.today().strftime("%Y-%m-%d")
-        self.title_history = {self.created_at: title}
-        self.resident_history = {self.created_at: is_resident}
-        self.start_balance = self._parse_balance(start_balance)
-        self.transactions = []
+        self.created_at = created_at or datetime.today().date()
+        self.start_balance = parse_decimal(start_balance)
 
-    @staticmethod
-    def _get_value_at(history: dict, date_str: str):
+    def get_transactions(self) -> List[Transaction]:
         """
-        Get the value from a history dictionary that was active at the given date.
-
-        Args:
-            history (dict): Dictionary with date keys (YYYY-MM-DD) and values.
-            date_str (str): Target date in 'YYYY-MM-DD' format.
+        Load all transactions linked to this member from the database.
 
         Returns:
-            Any: The value (e.g., title or resident status) valid at that date.
+            list[Transaction]: List of Transaction objects.
         """
-        date = datetime.strptime(date_str, "%Y-%m-%d")
-        sorted_items = sorted(history.items(), key=lambda x: x[0])
+        return load_transactions_by_email(self.email)
 
-        current_value = sorted_items[0][1]
-        for d_str, val in sorted_items:
-            d = datetime.strptime(d_str, "%Y-%m-%d")
-            if d <= date:
-                current_value = val
-            else:
-                break
-        return current_value
-
-    def get_title_at(self, date_str: str) -> str:
-        """Return the member's title valid at the specified date"""
-        return self._get_value_at(self.title_history, date_str)
-
-    def get_resident_status_at(self, date_str: str) -> bool:
-        """Return whether the member was a resident on the specified date"""
-        return self._get_value_at(self.resident_history, date_str)
-
-    @staticmethod
-    def _parse_balance(value) -> Decimal:
+    def get_balance(self) -> Decimal:
         """
-        Convert a value into a Decimal with two decimal places.
-
-        Accepts numbers with dot or comma as decimal separator.
-        If conversion fails, returns Decimal('0.00').
-
-        Args:
-            value (Any): A numeric value or string to convert.
+        Return the current account balance by summing all transactions up to today.
 
         Returns:
-            Decimal: A safely parsed monetary value.
+            Decimal: Starting balance plus all transaction amounts.
         """
-        if isinstance(value, Decimal):
-            return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        try:
-            normalized = str(value).replace(",", ".")
-            return Decimal(normalized).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        except (InvalidOperation, ValueError, TypeError):
-            return Decimal("0.00")
-
-    def add_transaction(self, date: str, description: str, amount):
-        """
-        Add a transaction record to the member's transaction list.
-
-        Args:
-            date (str): Transaction date in 'YYYY-MM-DD' format.
-            description (str): Description of the transaction.
-            amount (float | str | Decimal): Transaction amount (positive or negative).
-
-        Raises:
-            ValueError: If the date format is invalid.
-        """
-        try:
-            datetime.strptime(date, "%Y-%m-%d")
-        except ValueError:
-            raise ValueError(f"Invalid date format: '{date}'. Expected YYYY-MM-DD.")
-
-        amount = self._parse_balance(amount)
-        self.transactions.append({
-            "date": date,
-            "description": description,
-            "amount": float(amount)
-        })
-
-    @property
-    def balance(self) -> Decimal:
-        """
-        Calculate the current account balance.
-
-        Returns:
-            Decimal: Starting balance plus sum of all transaction amounts.
-        """
-        total = self.start_balance
-        for tx in self.transactions:
-            total += self._parse_balance(tx["amount"])
+        total = Decimal(self.start_balance)
+        for tx in self.get_transactions():
+            if tx.date <= date.today():
+                total += tx.amount
         return total
 
-    @property
-    def to_dict(self) -> dict:
+    def change_title_to(self, new_title: str, changed_by: str = None) -> None:
         """
-        Convert the Member object to a dictionary for storage or serialization.
-
-        Returns:
-            dict: Dictionary representation of the member.
-        """
-        return {
-            "email": self.email,
-            "last_name": self.last_name,
-            "first_name": self.first_name,
-            "title": self.title,
-            "is_resident": self.is_resident,
-            "created_at": self.created_at,
-            "title_history": self.title_history,
-            "resident_history": self.resident_history,
-            "start_balance": float(self.start_balance),
-            "transactions": self.transactions
-        }
-
-    @staticmethod
-    def from_dict(data: dict) -> "Member":
-        """
-        Create a Member instance from a dictionary.
-
-        Uses the most recent title and resident status from their histories.
+        Change the member's title and log the change in the database.
 
         Args:
-            data (dict): Dictionary containing member data.
+            new_title (str): New title to assign.
+            changed_by (str): Email of the person who made the change (default: admin).
+        """
+        if new_title == self.title:
+            return  # No change, skip
+
+        self.title = new_title
+        changed_by = changed_by
+        now = datetime.now()
+
+        with get_cursor() as cur:
+            # Update the current value in the members table
+            cur.execute("""
+                UPDATE members
+                SET title = %s
+                WHERE email = %s
+            """, (new_title, self.email))
+
+            # log the change in title_changes
+            cur.execute("""
+                INSERT INTO title_changes (member_email, changed_at, new_title, changed_by)
+                VALUES (%s, %s, %s, %s)
+            """, (self.email, now, new_title, changed_by))
+
+    def change_residency(self, new_resident: bool, changed_by: str = None) -> None:
+        """
+        Change the residency status of the member and log the change.
+
+        Args:
+            new_resident (bool): New residency status to assign.
+            changed_by (str): Email of the person who made the change (default: admin).
+        """
+        if new_resident == self.is_resident:
+            return  # No change, skip
+
+        self.is_resident = new_resident
+        changed_by = changed_by
+        now = datetime.now()
+
+        with get_cursor() as cur:
+            # Update current value in the members table
+            cur.execute("""
+                UPDATE members
+                SET is_resident = %s
+                WHERE email = %s
+            """, (new_resident, self.email))
+
+            # log the change in residency_changes
+            cur.execute("""
+                INSERT INTO residency_changes (member_email, changed_at, new_resident, changed_by)
+                VALUES (%s, %s, %s, %s)
+            """, (self.email, now, new_resident, changed_by))
+
+    def create_transaction(self,
+                           transaction_date: date,
+                           description: str,
+                           amount: Decimal,
+                           changed_by: str) -> Transaction:
+        """
+        Create a new transaction for this member, save it to the database, and return it.
+
+        Args:
+            transaction_date (date): The date of the transaction.
+            description (str): Description of the transaction.
+            amount (Decimal): Transaction amount (positive for income, negative for expense).
+            changed_by (str): Email of the user creating the transaction (for audit logging).
 
         Returns:
-            Member: Reconstructed Member object.
+            Transaction: The created and saved transaction object.
         """
-        latest_title_date = max(data["title_history"].keys())
-        latest_resident_date = max(data["resident_history"].keys())
-
-        member = Member(
-            email=data.get("email"),
-            last_name=data.get("last_name", ""),
-            first_name=data.get("first_name", ""),
-            title=data["title_history"][latest_title_date],
-            is_resident=data["resident_history"][latest_resident_date],
-            start_balance=data.get("start_balance", 0.0)
+        transaction = Transaction(
+            transaction_date=transaction_date,
+            description=description,
+            amount=amount,
+            member_email=self.email
         )
+        transaction.save(changed_by=changed_by)
+        return transaction
 
-        member.created_at = data.get("created_at", latest_title_date)
-        member.title_history = data.get("title_history", {})
-        member.resident_history = data.get("resident_history", {})
-        member.transactions = data.get("transactions", [])
+    def save_to_db(self) -> None:
+        """
+        Save the core member data into the database.
 
-        return member
+        If the member already exists (based on email), their
+        first name, last name, title, residency status, and
+        starting balance are updated.
+
+        Additionally, if the member is new, their initial title
+        and residency status are recorded in the corresponding history tables.
+        """
+        with get_cursor() as cur:
+            # Try to insert or update the member
+            cur.execute("""
+                INSERT INTO members (
+                    email, first_name, last_name, title, is_resident, created_at, start_balance
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (email) DO UPDATE SET
+                    first_name = EXCLUDED.first_name,
+                    last_name = EXCLUDED.last_name,
+                    title = EXCLUDED.title,
+                    is_resident = EXCLUDED.is_resident,
+                    start_balance = EXCLUDED.start_balance
+                    -- created_at intentionally not updated to preserve original creation time
+            """, (
+                self.email,
+                self.first_name,
+                self.last_name,
+                self.title,
+                self.is_resident,
+                self.created_at,
+                float(self.start_balance)
+            ))
+
+            # Check if it's a new member by querying title_changes
+            cur.execute("SELECT 1 FROM title_changes WHERE member_email = %s LIMIT 1", (self.email,))
+            title_exists = cur.fetchone()
+
+            if not title_exists:
+                # Save initial title history
+                cur.execute("""
+                    INSERT INTO title_changes (member_email, changed_at, new_title, changed_by)
+                    VALUES (%s, %s, %s, %s)
+                """, (
+                    self.email,
+                    datetime.now(),
+                    self.title,
+                    self.email  # assuming self.email is the one creating their own record
+                ))
+
+            # Check if it's a new member by querying residency_changes
+            cur.execute("SELECT 1 FROM residency_changes WHERE member_email = %s LIMIT 1", (self.email,))
+            residency_exists = cur.fetchone()
+
+            if not residency_exists:
+                # Save initial residency status
+                cur.execute("""
+                    INSERT INTO residency_changes (member_email, changed_at, new_resident, changed_by)
+                    VALUES (%s, %s, %s, %s)
+                """, (
+                    self.email,
+                    datetime.now(),
+                    self.is_resident,
+                    self.email
+                ))

@@ -25,7 +25,7 @@
                 {% for t in possible_titles %}
                 <option value="{{ t }}"
                         title="{{ title_labels[t] }}"
-                        {% if member.current_title == t %}selected{% endif %}>
+                        {% if member.title == t %}selected{% endif %}>
                   {{ t }}
                 </option>
                 {% endfor %}

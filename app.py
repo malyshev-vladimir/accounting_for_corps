@@ -1,13 +1,18 @@
+import logging
+
 from flask import Flask, render_template, request, redirect, url_for, jsonify
 from decimal import Decimal, InvalidOperation
 from datetime import date, datetime
 
 from db import get_cursor
+from models.transaction import Transaction
+from models.member import Member, Title
+from services.logging_db import log_transaction_change
+from services.members_db import load_member_by_email, load_all_members
 from services.report_sender import send_report_email
 from services.settings_loader import get_admin_email
-from services.members_db import load_member, save_member, load_all_members
 from services.monthly_payments import add_missing_monthly_payments
-from models.member import Member, Title
+from services.transactions_db import load_transactions_by_email, load_transaction_by_id
 
 # Initialize the Flask application
 app = Flask(__name__)
@@ -38,9 +43,9 @@ def dashboard():
 
     # Load the member from the database
     try:
-        member = load_member(email)
+        member = load_member_by_email(email)
     except ValueError:
-        return f"No member found with this email: {email}", 404
+        return f"[!] No member found with this email: {email}", 404
 
     # Render the dashboard for the member
     return render_template("dashboard.html", member=member)
@@ -56,12 +61,10 @@ def admin_panel():
     try:
         members = load_all_members()
     except Exception as e:
-        return f"Error loading members: {e}", 500
+        return f"[!] Error loading members: {e}", 500
 
     # Sort members by creation date (newest first)
-    sorted_members = dict(
-        sorted(members.items(), key=lambda item: item[1].created_at, reverse=True)
-    )
+    sorted_members = sorted(members, key=lambda member: member.created_at, reverse=True)
 
     # Render the admin member list
     return render_template("admin_members.html", members=sorted_members)
@@ -79,8 +82,8 @@ def admin_add_member():
         email = request.form.get("email", "").strip()
         last_name = request.form.get("last_name", "").strip()
         first_name = request.form.get("first_name", "").strip()
-        title = request.form.get("title", "").strip()
-        is_resident = request.form.get("is_resident") == "on"
+        title = request.form.get("title", "F").strip()
+        is_resident = request.form.get("is_resident", True) == "on"
         balance_str = request.form.get("start_balance", "0.00").strip()
 
         # Validate the email format
@@ -91,29 +94,29 @@ def admin_add_member():
         try:
             start_balance = Decimal(balance_str.replace(",", "."))
         except InvalidOperation:
-            return "Invalid balance format", 400
+            return "[!] Invalid balance format", 400
 
         # Validate title value
         if title not in Title._value2member_map_:
-            return "Invalid title", 400
+            return "[!] Invalid title", 400
 
         # Check if member already exists
         try:
-            load_member(email)
-            return f"Member with email {email} already exists.", 400
+            load_member_by_email(email)
+            return f"[!] Member with email {email} already exists.", 400
         except ValueError:
             pass
 
-        # Create a new Member instance
-        member = Member(email=email, last_name=last_name, start_balance=start_balance)
-        member.first_name = first_name
-        member.title = title
-        member.is_resident = is_resident
-        member.title_history = {member.created_at: title}
-        member.resident_history = {member.created_at: is_resident}
+        # Create a new Member
+        member = Member(email=email,
+                        last_name=last_name,
+                        first_name=first_name,
+                        title=title,
+                        is_resident=is_resident,
+                        start_balance=start_balance)
 
         # Save the new member to the database
-        save_member(member)
+        member.save_to_db()
 
         # Redirect to the admin panel
         return redirect(url_for("admin_panel"))
@@ -139,9 +142,9 @@ def check_monthly_payments():
     # Load, update, and save each member individually
     for email in emails:
         try:
-            member = load_member(email)
+            member = load_member_by_email(email)
             add_missing_monthly_payments(member, today)
-            save_member(member)
+            member.save_to_db()
         except Exception as e:
             print(f"[!] Error processing {email}: {e}")
 
@@ -155,52 +158,58 @@ def admin_add_transaction():
     Add a new transaction for a selected member.
 
     GET: Display the transaction form with a list of members.
-    POST: Process submitted transaction and update the selected member.
+    POST: Process the submitted transaction and insert into the database.
     """
-    # Load list of email addresses
-    with get_cursor() as cur:
-        cur.execute("SELECT email FROM members ORDER BY last_name, first_name")
-        emails = [row[0] for row in cur.fetchall()]
-
-    # Load full member objects
-    members = {}
-    for email in emails:
-        try:
-            member = load_member(email)
-            member.current_title = member.get_title_at(date.today().isoformat())
-            members[email] = member
-        except Exception as e:
-            print(f"[!] Failed to load member {email}: {e}")
-
-    # Save transaction (POST)
     if request.method == "POST":
-        email = request.form.get("email")
-        amount = float(request.form.get("amount"))
-        date_str = request.form.get("date")
-        description = request.form.get("description")
-
         try:
-            member = load_member(email)
-            member.add_transaction(date_str, description, amount)
-            save_member(member)
+            email = request.form.get("email")
+            date_str = request.form.get("date")
+            description = request.form.get("description").strip()
+            amount_str = request.form.get("amount", "0.00").strip().replace(",", ".")
+
+            try:
+                transaction_date = date.fromisoformat(date_str)
+            except ValueError:
+                return "[!] Ungültiges Datum", 400
+
+            try:
+                amount = Decimal(amount_str)
+            except InvalidOperation:
+                return "[!] Ungültiger Betrag", 400
+
+            # Create a new Transaction instance
+            new_transaction = Transaction(
+                transaction_date=transaction_date,
+                description=description,
+                amount=amount,
+                member_email=email
+            )
+
+            # Save the transaction to the database
+            new_transaction.save(changed_by=get_admin_email())
+
+            logging.info(f"[✓] Transaction added: {new_transaction.description} for {email}")
+
+            return redirect(url_for("admin_add_transaction", email=email))
+
         except Exception as e:
-            return f"Error adding transaction: {e}", 400
+            logging.error(f"[!] Error adding transaction: {e}")
+            return f"[!] Error adding transaction: {e}", 400
 
-        return redirect(url_for("admin_add_transaction", email=email))
-
-    # Load selected member (GET)
+    # GET Request: Load data for the form
+    members = load_all_members()
     selected_email = request.args.get("email")
     selected_member = None
+
     if selected_email:
         try:
-            selected_member = load_member(selected_email)
+            selected_member = load_member_by_email(selected_email)
         except Exception as e:
-            print(f"[!] Could not load selected member: {e}")
+            logging.error(f"[!] Could not load selected member: {e}")
 
-    # Render template
     return render_template(
         "admin_add_transaction.html",
-        members=members.values(),
+        members=members,
         current_date=date.today().isoformat(),
         selected_member=selected_member
     )
@@ -209,22 +218,50 @@ def admin_add_transaction():
 @app.route('/delete_transaction/<email>/<int:transaction_id>', methods=['POST'])
 def delete_transaction(email, transaction_id):
     """
-    Delete a specific transaction from a member by its index.
+    Handle the deletion of a specific transaction by its ID.
 
-    POST: Remove the transaction and save the updated member.
+    This function:
+    - Loads the transaction by its ID
+    - Checks if it belongs to the correct member
+    - Logs the deletion attempt
+    - Attempts to delete the transaction from the database
+    - Logs the deletion if successful
+
+    Args:
+        email (str): The email of the member requesting the deletion.
+        transaction_id (int): The ID of the transaction to be deleted.
+
+    Returns:
+        str: An error message if there was a problem, or an empty response if successful.
     """
     try:
-        member = load_member(email)
-    except ValueError:
-        return "Member not found", 404
+        # Load the transaction by its ID
+        transaction = load_transaction_by_id(transaction_id)
 
-    if not (0 <= transaction_id < len(member.transactions)):
-        return "Transaction not found", 404
+        # Ensure the transaction belongs to the member requesting the deletion
+        if transaction.member_email != email:
+            return "[!] Email mismatch for transaction", 400
 
-    # Delete the transaction by index and save it
-    del member.transactions[transaction_id]
-    save_member(member)
-    return '', 204
+        # Delete transaction
+        was_deleted = transaction.delete(changed_by=get_admin_email())
+
+        if not was_deleted:
+            return "[!] Deletion failed", 400
+
+        # Log the transaction
+        log_transaction_change(
+            transaction_id=transaction.id,
+            action="delete",
+            changed_by=get_admin_email(),
+            description=f"Deleted transaction: {transaction.description}"
+        )
+
+        logging.info(f"[✓] Deleted transaction {transaction.id} for {email}")
+        return '', 204
+    except Exception as e:
+        # Log any errors that occur during the deletion process
+        logging.error(f"[!] Error deleting transaction {transaction_id}: {e}")
+        return f"[!] Error deleting transaction: {e}", 400
 
 
 @app.route('/admin/change_title')
@@ -234,17 +271,17 @@ def admin_change_title():
 
     GET: Show table of all members with dropdown to update their title.
     """
-    today_str = date.today().isoformat()
-
     # Load all members and prepare simplified data for template rendering
     members = load_all_members()
+
+    # Prepare data for template
     member_data = [
         {
             'email': m.email,
             'last_name': m.last_name,
-            'current_title': m.get_title_at(today_str)
+            'current_title': m.title
         }
-        for m in members.values()
+        for m in members
     ]
 
     # Mapping of title codes to human-readable descriptions
@@ -277,9 +314,8 @@ def update_titles_bulk():
 
     # Validate format
     if not isinstance(updates, list):
-        return jsonify({"success": False}), 400
+        return jsonify({"success": False, "error": "Invalid format"}), 400
 
-    today = date.today().isoformat()
     updated = 0  # Counter to track how many updates were successful
 
     # Iterate through all submitted updates
@@ -287,20 +323,16 @@ def update_titles_bulk():
         email = update.get("email")
         new_title = update.get("new_title")
 
-        # Validate input fields
         if not email or not new_title:
-            continue
-        if new_title not in Title._value2member_map_:
             continue
 
         try:
-            member = load_member(email)
-            member.title_history[today] = new_title
-            save_member(member)
+            member = load_member_by_email(email)
+            member.change_title_to(new_title, changed_by=get_admin_email())
             updated += 1
-
         except Exception as e:
-            print(f"[!] Failed to update {email}: {e}")
+            logging.error(f"[!] Error updating title for {email}: {e}")
+            continue
 
     return jsonify({"success": True, "updated": updated})
 
@@ -314,7 +346,7 @@ def send_report():
           and sends it via email using the configured SMTP credentials.
     """
     data = request.get_json()
-    email = data.get("email")
+    email = data.get("email", "").strip().lower()
 
     # Validate that the email is provided
     if not email:
@@ -322,7 +354,7 @@ def send_report():
 
     # Try to load the member from the database
     try:
-        member = load_member(email)
+        member = load_member_by_email(email)
     except ValueError:
         return jsonify({"error": "Mitglied nicht gefunden"}), 404
 
@@ -331,36 +363,40 @@ def send_report():
         send_report_email(member)
         return jsonify({"success": True}), 200
     except Exception as e:
-        print(f"[!] Fehler beim Senden an {email}: {e}")
+        logging.error(f"[!] Fehler beim Senden an {email}: {e}")
         return jsonify({"error": "Senden fehlgeschlagen"}), 500
 
 
 @app.route("/admin/get_transactions")
 def get_transactions():
     """
-    Return all transactions for a given member.
+    Return all transactions for a specific member in JSON format.
 
-    GET: Accept member email as a query parameter and return transactions as JSON.
+    GET: Provide a list of transactions for dynamic table loading.
     """
-    # Get the email parameter from the query string
-    email = request.args.get("email")
+    email = request.args.get("email", "").strip().lower()
 
-    # Try to load the member from the database
+    if not email:
+        return jsonify({"error": "Missing email parameter."}), 400
+
     try:
-        member = load_member(email)
-    except ValueError:
-        return jsonify([])
+        transaction_list = load_transactions_by_email(email)
 
-    # Return the transactions in reverse order with their real index
-    return jsonify([
-        {
-            "id": i,  # real index in the original list
-            "date": tx["date"],
-            "amount": tx["amount"],
-            "description": tx["description"]
-        }
-        for i, tx in reversed(list(enumerate(member.transactions)))
-    ])
+        transactions = [
+            {
+                "id": t.id,
+                "date": t.date.strftime("%d.%m.%Y"),
+                "amount": str(t.amount),
+                "description": t.description
+            }
+            for t in transaction_list
+        ]
+
+        return jsonify(transactions)
+
+    except Exception as e:
+        logging.error(f"[!] Error fetching transactions: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == '__main__':

@@ -16,7 +16,7 @@
       </tr>
     </thead>
     <tbody>
-      {% for member in members.values() %}
+      {% for member in members %}
       <tr>
         <td class="ps-3">{{ member.title }} {{ member.last_name }}{% if member.first_name %} ({{ member.first_name }}){% endif %}</td>
         <td>
@@ -33,7 +33,7 @@
         </td>
         <td class="d-none d-md-table-cell">{{ member.email }}</td>
         <td class="d-none d-lg-table-cell">{{ member.created_at }}</td>
-        <td class="text-center">{{ "%.2f"|format(member.balance) }}</td>
+        <td class="text-center">{{ "%.2f"|format(member.get_balance()) }}</td>
         <td>
           <button
             onclick="window.location.href='/admin/edit_member?email={{ member.email }}'"
