@@ -33,7 +33,8 @@ CREATE TABLE IF NOT EXISTS transactions (
     member_email VARCHAR NOT NULL REFERENCES members(email) ON DELETE CASCADE,
     date DATE NOT NULL,
     description TEXT NOT NULL,
-    amount NUMERIC(10, 2) NOT NULL
+    amount NUMERIC(10, 2) NOT NULL,
+    transaction_type INTEGER NOT NULL DEFAULT 1
 );
 
 -- Table: transaction_change_log

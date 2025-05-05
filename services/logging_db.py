@@ -98,7 +98,12 @@ def log_residency_change(member_email: str, new_resident: bool, changed_by: str)
         """, (member_email, new_resident, changed_by))
 
 
-def log_transaction_change(transaction_id: int, action: str, changed_by: str, description: str = "") -> None:
+def log_transaction_change(
+    transaction_id: int,
+    action: str,
+    changed_by: str,
+    description: str = ""
+) -> None:
     """
     Log the change in the transaction.
 
@@ -112,6 +117,16 @@ def log_transaction_change(transaction_id: int, action: str, changed_by: str, de
     """
     with get_cursor() as cur:
         cur.execute("""
-            INSERT INTO transaction_change_log (transaction_id, action, changed_by, description)
+            INSERT INTO transaction_change_log (
+                transaction_id,
+                action,
+                changed_by,
+                description
+            )
             VALUES (%s, %s, %s, %s)
-        """, (transaction_id, action, changed_by, description))
+        """, (
+            transaction_id,
+            action,
+            changed_by,
+            description
+        ))

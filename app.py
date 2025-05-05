@@ -7,6 +7,7 @@ from datetime import date, datetime
 from db import get_cursor
 from models.transaction import Transaction
 from models.member import Member, Title
+from models.transaction_type import TransactionType
 from services.logging_db import log_transaction_change
 from services.members_db import load_member_by_email, load_all_members
 from services.report_sender import send_report_email
@@ -167,6 +168,12 @@ def admin_add_transaction():
             description = request.form.get("description").strip()
             amount_str = request.form.get("amount", "0.00").strip().replace(",", ".")
 
+            type_str = request.form.get("type", "1")
+            try:
+                transaction_type = TransactionType(int(type_str))
+            except (ValueError, KeyError):
+                return "[!] Ungültiger Transaktionstyp", 400
+
             try:
                 transaction_date = date.fromisoformat(date_str)
             except ValueError:
@@ -182,7 +189,8 @@ def admin_add_transaction():
                 transaction_date=transaction_date,
                 description=description,
                 amount=amount,
-                member_email=email
+                member_email=email,
+                transaction_type=transaction_type
             )
 
             # Save the transaction to the database
@@ -211,7 +219,8 @@ def admin_add_transaction():
         "admin_add_transaction.html",
         members=members,
         current_date=date.today().isoformat(),
-        selected_member=selected_member
+        selected_member=selected_member,
+        selected_email=selected_email
     )
 
 

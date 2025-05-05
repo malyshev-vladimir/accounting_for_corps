@@ -3,6 +3,7 @@ from decimal import Decimal
 from datetime import date
 from db import get_cursor
 from services.logging_db import log_transaction_change
+from models.transaction_type import TransactionType
 
 
 class Transaction:
@@ -15,11 +16,13 @@ class Transaction:
                  description: str,
                  amount: Decimal,
                  member_email: str,
+                 transaction_type: TransactionType = TransactionType.CUSTOM,
                  transaction_id: int = None):
         self.date = transaction_date
         self.description = description
         self.amount = Decimal(amount)
         self.member_email = member_email
+        self.type = transaction_type
         self.id = transaction_id
 
     def save(self, changed_by: str):
@@ -31,27 +34,47 @@ class Transaction:
         """
         with get_cursor() as cur:
             cur.execute("""
-                INSERT INTO transactions (member_email, date, description, amount)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO transactions (member_email, date, description, amount, transaction_type)
+                VALUES (%s, %s, %s, %s, %s)
                 RETURNING id
-            """, (self.member_email, self.date, self.description, self.amount))
+            """, (self.member_email, self.date, self.description, self.amount, self.type.value))
             self.id = cur.fetchone()[0]
 
-        log_transaction_change(self.id, "create", changed_by, f"Created transaction: {self.description}")
+        log_transaction_change(
+            self.id,
+            "create",
+            changed_by,
+            f"Created transaction: {self.description}"
+        )
 
-    def update(self, new_date: date, new_description: str, new_amount: float, changed_by: str, note: str = ""):
+    def update(
+            self,
+            new_date: date = None,
+            new_description: str = None,
+            new_amount: float = None,
+            changed_by: str = "",
+            note: str = ""
+    ):
         """
-        Update the transaction in the database and log update.
+        Update the transaction in the database and log the change.
+
+        Note: The transaction type cannot be changed. To change the type,
+        delete the transaction and create a new one.
 
         Args:
-            new_date (date): New transaction date.
-            new_description (str): New description.
-            new_amount (float): New amount.
-            changed_by (str): Who made the change.
+            new_date (date, optional): New transaction date.
+            new_description (str, optional): New description.
+            new_amount (float, optional): New amount.
+            changed_by (str): Email of the user making the change.
             note (str): Optional log note.
         """
         if self.id is None:
             raise ValueError("Cannot update transaction without ID.")
+
+        # Keep current values for any omitted parameters
+        new_date = new_date or self.date
+        new_description = new_description or self.description
+        new_amount = new_amount if new_amount is not None else self.amount
 
         with get_cursor() as cur:
             cur.execute("""
@@ -60,7 +83,12 @@ class Transaction:
                 WHERE id = %s
             """, (new_date, new_description, new_amount, self.id))
 
-        log_transaction_change(self.id, "update", changed_by, note or f"Updated transaction: {new_description}")
+        log_transaction_change(
+            self.id,
+            "update",
+            changed_by,
+            note or f"Updated transaction: {new_description}"
+        )
 
         self.date = new_date
         self.description = new_description

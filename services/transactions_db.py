@@ -15,7 +15,7 @@ def load_transactions_by_email(email: str) -> List[Transaction]:
     """
     with get_cursor() as cur:
         cur.execute("""
-            SELECT id, date, description, amount
+            SELECT id, date, description, amount, transaction_type
             FROM transactions
             WHERE member_email = %s
             ORDER BY date
@@ -27,6 +27,7 @@ def load_transactions_by_email(email: str) -> List[Transaction]:
             transaction_date=row[1],
             description=row[2],
             amount=row[3],
+            transaction_type=row[4],
             member_email=email,
             transaction_id=row[0]
         ) for row in rows
@@ -48,7 +49,7 @@ def load_transaction_by_id(transaction_id: int) -> Transaction:
     """
     with get_cursor() as cur:
         cur.execute("""
-            SELECT member_email, date, description, amount
+            SELECT member_email, date, description, amount, transaction_type
             FROM transactions
             WHERE id = %s
         """, (transaction_id,))
@@ -62,5 +63,6 @@ def load_transaction_by_id(transaction_id: int) -> Transaction:
         description=row[2],
         amount=row[3],
         member_email=row[0],
+        transaction_type=row[4],
         transaction_id=transaction_id
     )
