@@ -34,6 +34,38 @@ def load_transactions_by_email(email: str) -> List[Transaction]:
     ]
 
 
+def load_transactions_by_type(email: str, type_number: int) -> List[Transaction]:
+    """
+        Load all transactions of a specific type for a given member email.
+
+        Args:
+            email (str): Member's email.
+            type_number (int): Enum value of the transaction type.
+
+        Returns:
+            List[Transaction]: List of transactions matching the type.
+        """
+    with get_cursor() as cur:
+        cur.execute("""
+                SELECT id, date, description, amount, transaction_type
+                FROM transactions
+                WHERE member_email = %s AND transaction_type = %s
+                ORDER BY date
+            """, (email, type_number))
+        rows = cur.fetchall()
+
+    return [
+        Transaction(
+            transaction_date=row[1],
+            description=row[2],
+            amount=row[3],
+            transaction_type=row[4],
+            member_email=email,
+            transaction_id=row[0]
+        ) for row in rows
+    ]
+
+
 def load_transaction_by_id(transaction_id: int) -> Transaction:
     """
     Load a single transaction from the database by its ID.

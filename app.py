@@ -4,16 +4,16 @@ from flask import Flask, render_template, request, redirect, url_for, jsonify
 from decimal import Decimal, InvalidOperation
 from datetime import date, datetime
 
-from db import get_cursor
 from models.transaction import Transaction
 from models.member import Member, Title
 from models.transaction_type import TransactionType
 from services.logging_db import log_transaction_change
 from services.members_db import load_member_by_email, load_all_members
 from services.report_sender import send_report_email
-from services.settings_loader import get_admin_email
-from services.monthly_payments import add_missing_monthly_payments
-from services.transactions_db import load_transactions_by_email, load_transaction_by_id
+from services.settings_loader import get_admin_email, get_monthly_payment_for_residents, \
+    get_monthly_payment_for_non_residents
+from services.monthly_payments import get_missing_monthly_payment_transactions
+from services.transactions_db import load_transactions_by_email, load_transaction_by_id, load_transactions_by_type
 
 # Initialize the Flask application
 app = Flask(__name__)
@@ -127,30 +127,83 @@ def admin_add_member():
 
 
 @app.route("/admin/check_monthly_payments")
-def check_monthly_payments():
+def check_all_missing_monthly_payments():
     """
-    Check and add any missing monthly contributions for all members.
+    Display the page for manually reviewing and adding missing monthly payments.
 
-    GET: Update payment records for each member and redirect to admin panel.
+    GET: For each member (except AH), load both existing and missing monthly payments,
+         and render an editable table grouped by member.
     """
-    today = datetime.today()
+    members = load_all_members()
 
-    # Fetch all member email addresses from the database
-    with get_cursor() as cur:
-        cur.execute("SELECT email FROM members ORDER BY last_name, first_name")
-        emails = [row[0] for row in cur.fetchall()]
+    result = []
 
-    # Load, update, and save each member individually
-    for email in emails:
+    for member in members:
+        if member.title == "AH":
+            continue
+
+        # Загружаем существующие ежемесячные транзакции
+        existing = load_transactions_by_type(member.email, TransactionType.MONTHLY_FEE.value)
+
+        # Загружаем недостающие
+        missing = get_missing_monthly_payment_transactions(member.email)
+
+        # Сортируем обе группы по дате
+        existing_sorted = sorted(existing, key=lambda t: t.date)
+        missing_sorted = sorted(missing, key=lambda t: t.date)
+
+        result.append({
+            "member": member,
+            "existing": existing_sorted,
+            "missing": missing_sorted
+        })
+
+    return render_template(
+        "admin_missing_payments.html",
+        members=result,
+        resident_fee=get_monthly_payment_for_residents(),
+        non_resident_fee=get_monthly_payment_for_non_residents()
+    )
+
+
+@app.route("/admin/save_missing_payments", methods=["POST"])
+def save_missing_payments():
+    """
+    Save multiple missing monthly payments submitted from the UI.
+
+    POST: Accept a list of transactions (email, date, amount) and create them as monthly fees.
+    Returns JSON response with success status and number of saved transactions.
+    """
+    data = request.get_json()
+    transactions = data.get("transactions", [])
+
+    saved_count = 0
+
+    for entry in transactions:
         try:
-            member = load_member_by_email(email)
-            add_missing_monthly_payments(member, today)
-            member.save_to_db()
-        except Exception as e:
-            print(f"[!] Error processing {email}: {e}")
+            email = entry["email"]
+            date_str = entry["date"]
+            amount = Decimal(entry["amount"])
 
-    # Redirect back to the admin panel
-    return redirect(url_for("admin_panel"))
+            transaction_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+            description = f"Aktivenbeitrag ({transaction_date.strftime('%B %Y')})"
+
+            tx = Transaction(
+                transaction_date=transaction_date,
+                description=description,
+                amount=-amount,
+                member_email=email,
+                transaction_type=TransactionType.MONTHLY_FEE
+            )
+
+            tx.save(changed_by=get_admin_email())
+            saved_count += 1
+
+        except Exception as e:
+            print(f"[!] Fehler beim Speichern der Transaktion: {e}")
+            continue
+
+    return jsonify({"success": True, "saved": saved_count})
 
 
 @app.route("/admin/add_transaction", methods=["GET", "POST"])

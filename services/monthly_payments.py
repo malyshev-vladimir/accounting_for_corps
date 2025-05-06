@@ -1,9 +1,12 @@
-from datetime import datetime
+from datetime import datetime, date
 from dateutil.relativedelta import relativedelta
 from decimal import Decimal
 
+from models.transaction import Transaction
+from models.transaction_type import TransactionType
+from services.members_db import load_member_by_email
 from services.settings_loader import get_monthly_payment_for_residents, get_monthly_payment_for_non_residents
-
+from services.transactions_db import load_transactions_by_email, load_transactions_by_type
 
 # Mapping from English to German month names.
 GERMAN_MONTHS = {
@@ -14,11 +17,11 @@ GERMAN_MONTHS = {
 }
 
 
-def get_german_month_name(dt: datetime) -> str:
+def get_german_month_name(dt: date) -> str:
     """Return the German name of the month for a given date.
 
     Args:
-        dt: A datetime object.
+        dt: A date object.
 
     Returns:
         The corresponding month name in German.
@@ -26,7 +29,7 @@ def get_german_month_name(dt: datetime) -> str:
     return GERMAN_MONTHS[dt.strftime("%B")]
 
 
-def iterate_months(start: datetime, end: datetime):
+def iterate_months(start: date, end: date):
     """Yield the first day of each month between start and end (inclusive).
 
     Args:
@@ -36,54 +39,65 @@ def iterate_months(start: datetime, end: datetime):
     Yields:
         A datetime object representing the first day of each month.
     """
-    current = datetime(start.year, start.month, 1)
+    current = date(start.year, start.month, 1)
+    end = date(end.year, end.month, 1)
+
     while current <= end:
         yield current
         current += relativedelta(months=1)
 
 
-def add_missing_monthly_payments(member, up_to_date: datetime):
-    """Add missing monthly payment transactions for a member.
+def has_monthly_payment_for_month(member, month: datetime) -> bool:
+    target_date = month.replace(day=1)
+    for tx in load_transactions_by_email(member.email):
+        if tx.date == target_date and tx.type == TransactionType.MONTHLY_FEE:
+            return True
+    return False
 
-    Monthly payments are added from the member's creation date
-    up to the specified date if they do not already exist.
+
+def get_missing_monthly_payment_transactions(email: str) -> list[Transaction]:
+    """
+    Given a member's email, return a list of all missing monthly payments
+    from the creation date to the current month.
 
     Args:
-        member: A Member instance to update.
-        up_to_date: The final month (inclusive) to check for missing payments.
+        email (str): Email of the member.
+
+    Returns:
+        List[Transaction]: Transactions that should exist but are missing.
     """
-    if not member.created_at:
-        return
+    # Load the member object and list of transactions
+    member = load_member_by_email(email)
+    monthly_fees = load_transactions_by_type(email, TransactionType.MONTHLY_FEE.value)
 
-    created = datetime.strptime(member.created_at, "%Y-%m-%d")
-    current = datetime(created.year, created.month, 1)
-    end = datetime(up_to_date.year, up_to_date.month, 1)
+    # Parse creation and define time range
+    first_month = member.created_at.replace(day=1)
+    current_month = date.today().replace(day=1)
 
-    # Collect existing descriptions to check for exact matches
-    existing_descriptions = {
-        tx["description"]
-        for tx in member.transactions
-    }
+    existing_months = {tx.date for tx in monthly_fees}
 
-    while current <= end:
-        date_str = current.strftime("%Y-%m-01")
-        title = member.title
+    missing_transactions = []
 
-        if title == "AH":
-            amount = Decimal("0.00")
-        else:
-            is_resident = member.get_resident_status_at(date_str)
-            if is_resident:
-                amount = Decimal(str(get_monthly_payment_for_residents()))
-            else:
-                amount = Decimal(str(get_monthly_payment_for_non_residents()))
+    for month in iterate_months(first_month, current_month):
+        if month in existing_months:
+            continue
 
-        if amount > 0:
-            month_label = get_german_month_name(current)
-            year = current.year
-            description = f"Aktivenbeitrag ({month_label} {year})"
+        # Get payment amount
+        amount = Decimal(str(
+            get_monthly_payment_for_residents() if member.is_resident
+            else get_monthly_payment_for_non_residents()
+        ))
+        if amount == 0:
+            continue
 
-            if description not in existing_descriptions:
-                member.add_transaction(date_str, description, -amount)
+        # Build transaction object
+        tx = Transaction(
+            transaction_date=month,
+            description=f"Aktivenbeitrag ({get_german_month_name(month)} {month.year})",
+            amount=-amount,
+            member_email=member.email,
+            transaction_type=TransactionType.MONTHLY_FEE
+        )
+        missing_transactions.append(tx)
 
-        current += relativedelta(months=1)
+    return missing_transactions

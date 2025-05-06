@@ -7,6 +7,7 @@ class TransactionType(Enum):
     CREDIT = 3
     FINE = 4
     REIMBURSEMENT = 5
+    MONTHLY_FEE = 6
 
     def label(self) -> str:
         return {
@@ -15,4 +16,5 @@ class TransactionType(Enum):
             TransactionType.CREDIT: "Gutschrift",
             TransactionType.FINE: "Strafe",
             TransactionType.REIMBURSEMENT: "Rückerstattung (AaA)",
+            TransactionType.MONTHLY_FEE: "Aktivenbeitrag"
         }.get(self, "Unbekannt")

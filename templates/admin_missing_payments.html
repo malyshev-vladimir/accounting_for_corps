@@ -1,0 +1,71 @@
+{% extends "admin_base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2 class="mb-4">Fehlende Aktivenbeiträge nach Mitglied</h2>
+    <form id="missingPaymentsForm">
+        {% for block in members %}
+        <div class="card mb-5">
+            <div class="card-header bg-dark text-white">
+                {{ block.member.last_name }}, {{ block.member.first_name }} — {{ block.member.email }}
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-bordered align-middle text-center">
+                        <thead class="table-light">
+                        <tr>
+                            <th>Monat</th>
+                            <th>Betrag</th>
+                            <th></th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for tx in block.existing %}
+                        <tr class="table-success">
+                            <td>{{ tx.date.strftime("%B %Y") }}</td>
+                            <td>{{ "%.2f"|format(tx.amount) }} €</td>
+                            <td colspan="2"><i class="bi bi-check-circle text-success"></i></td>
+                        </tr>
+                        {% endfor %}
+
+                        {% for tx in block.missing %}
+                        <tr data-email="{{ block.member.email }}" data-date="{{ tx.date.strftime('%Y-%m-%d') }}">
+                            <td>{{ tx.date.strftime("%B %Y") }}</td>
+                            <td>
+                                <select class="form-select form-select-sm amount-select" style="text-align: center;">
+                                    <option value="{{ resident_fee }}"
+                                            {% if tx.amount== neg_res_fee %}selected{% endif %}
+                                            style="text-align: center;">
+                                        {{ "%.2f"|format(resident_fee  * -1) }} €
+                                    </option>
+                                    <option value="{{ non_resident_fee }}"
+                                            {% if tx.amount== neg_nonres_fee %}selected{% endif %}
+                                            style="text-align: center;">
+                                        {{ "%.2f"|format(non_resident_fee * -1) }} €
+                                    </option>
+                                </select>
+                            </td>
+                            <td>
+                                <button type="button" class="btn btn-outline-success btn-sm toggle-button">
+                                    <i class="bi bi-plus-circle"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+
+        <div class="text-end">
+            <button type="submit" class="btn btn-primary">Alle ausgewählten Zahlungen speichern</button>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/missing_payments.js') }}"></script>
+{% endblock %}
