@@ -48,6 +48,9 @@ def dashboard():
     except ValueError:
         return f"[!] No member found with this email: {email}", 404
 
+    member.balance = member.get_balance()
+    member.transactions = member.get_transactions()
+
     # Render the dashboard for the member
     return render_template("dashboard.html", member=member)
 
@@ -142,13 +145,10 @@ def check_all_missing_monthly_payments():
         if member.title == "AH":
             continue
 
-        # Загружаем существующие ежемесячные транзакции
         existing = load_transactions_by_type(member.email, TransactionType.MONTHLY_FEE.value)
 
-        # Загружаем недостающие
         missing = get_missing_monthly_payment_transactions(member.email)
 
-        # Сортируем обе группы по дате
         existing_sorted = sorted(existing, key=lambda t: t.date)
         missing_sorted = sorted(missing, key=lambda t: t.date)
 
