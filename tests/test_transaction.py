@@ -70,7 +70,8 @@ def test_transaction_update():
             assert tx.amount == Decimal("20.00")
             assert "update transactions" in logs["executed"][0]
             mock_log.assert_called_once()
-            assert "manual correction" in mock_log.call_args[0][3].lower()
+            description = mock_log.call_args[0][3]
+            assert "manual correction" in description.lower()
 
 
 def test_transaction_delete_success():
@@ -99,7 +100,7 @@ def test_transaction_delete_success():
             assert result is True
             assert "delete from transactions" in logs["query"]
             mock_log.assert_called_once()
-            assert "deleted transaction" in mock_log.call_args[0][3].lower()
+            assert "deleted transaction" in mock_log.call_args.kwargs["description"].lower()
 
 
 def test_transaction_delete_failure():

@@ -1,0 +1,13 @@
+# Core dependencies
+flask
+python-dotenv
+
+# PostgreSQL database driver
+psycopg2
+
+# Date handling (for relativedelta)
+python-dateutil
+
+# Testing
+pytest
+pytest-cov
