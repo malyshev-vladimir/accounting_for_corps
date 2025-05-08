@@ -112,7 +112,9 @@
           </a>
         </li>
         <li>
-          <a href="/admin/change_title" class="nav-link text-white"><i class="bi bi-shuffle"></i> <span>Titel ändern</span></a>
+          <a href="{{ url_for('edit_titles_and_residency') }}" class="nav-link text-white">
+            <i class="bi bi-shuffle"></i> <span>Titel und Wohnsitz</span>
+          </a>
         </li>
         <li>
           <a href="/admin/add_transaction" class="nav-link text-white"><i class="bi bi-cash-coin"></i> <span>Transaktion</span></a>

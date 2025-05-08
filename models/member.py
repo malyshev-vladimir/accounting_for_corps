@@ -15,6 +15,14 @@ class Title(Enum):
     iaCB = "iaCB"
     AH = "AH"
 
+    def full(self):
+        return {
+            Title.F: "Fuchs",
+            Title.CB: "Corpsbruder",
+            Title.iaCB: "inaktiver CB",
+            Title.AH: "Alter Herr"
+        }[self]
+
 
 class Member:
     def __init__(self,
@@ -69,38 +77,41 @@ class Member:
                 total += tx.amount
         return total
 
-    def change_title_to(self, new_title: str, changed_by: str = None) -> None:
+    def change_title(self, new_title: str, changed_by: str = None) -> None:
         """
-        Change the member's title and log the change in the database.
+        Change the member's title and log the change in the database only if the title changes.
 
         Args:
             new_title (str): New title to assign.
             changed_by (str): Email of the person who made the change (default: admin).
         """
-        if new_title == self.title:
-            return  # No change, skip
+        # Normalize current title (convert Enum to string if needed)
+        current_title = self.title.value if isinstance(self.title, Title) else self.title
 
+        # If the title hasn't changed, skip the update and logging
+        if new_title == current_title:
+            return  # No change, skip update and logging
+
+        # If the title has changed, update it
         self.title = new_title
-        changed_by = changed_by
-        now = datetime.now()
 
+        # Update the title in the database
         with get_cursor() as cur:
-            # Update the current value in the members table
             cur.execute("""
-                UPDATE members
-                SET title = %s
-                WHERE email = %s
-            """, (new_title, self.email))
+                    UPDATE members
+                    SET title = %s
+                    WHERE email = %s
+                """, (new_title, self.email))
 
-            # log the change in title_changes
+            # Log the title change
             cur.execute("""
-                INSERT INTO title_changes (member_email, changed_at, new_title, changed_by)
-                VALUES (%s, %s, %s, %s)
-            """, (self.email, now, new_title, changed_by))
+                    INSERT INTO title_changes (member_email, changed_at, new_title, changed_by)
+                    VALUES (%s, %s, %s, %s)
+                """, (self.email, datetime.now(), new_title, changed_by))
 
     def change_residency(self, new_resident: bool, changed_by: str = None) -> None:
         """
-        Change the residency status of the member and log the change.
+        Change the residency status of the member and log the change only if the residency status changes.
 
         Args:
             new_resident (bool): New residency status to assign.
@@ -110,7 +121,6 @@ class Member:
             return  # No change, skip
 
         self.is_resident = new_resident
-        changed_by = changed_by
         now = datetime.now()
 
         with get_cursor() as cur:
@@ -121,7 +131,7 @@ class Member:
                 WHERE email = %s
             """, (new_resident, self.email))
 
-            # log the change in residency_changes
+            # Log the change in residency_changes
             cur.execute("""
                 INSERT INTO residency_changes (member_email, changed_at, new_resident, changed_by)
                 VALUES (%s, %s, %s, %s)

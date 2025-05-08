@@ -1,100 +1,67 @@
 {% extends "admin_base.html" %}
 
 {% block content %}
-<div class="container mt-4">
-  <h2 class="mb-4">Title ändern</h2>
-  <form id="statusForm">
-    <div class="table-responsive">
-      <table class="table table-striped align-middle text-center">
-        <thead class="table-dark">
-          <tr>
-            <th>Name</th>
-            <th>Title</th>
-            <th style="max-width: 15px;"></th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for member in members %}
-          <tr>
-            <td>{{ member.last_name }}</td>
-            <td>
-              <select class="form-select form-select-sm"
-                      data-email="{{ member.email }}"
-                      data-original="{{ member.current_title }}"
-                      onchange="markChanged(this)">
-                {% for t in possible_titles %}
-                <option value="{{ t }}"
-                        title="{{ title_labels[t] }}"
-                        {% if member.title == t %}selected{% endif %}>
-                  {{ t }}
-                </option>
-                {% endfor %}
-              </select>
-            </td>
-            <td><span class="status-indicator">
-              <i class="bi bi-check-circle text-success"></i>
-            </span></td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    <button type="submit" class="btn btn-primary mt-3">Save titles</button>
-  </form>
-
-  <div id="saveResult" class="mt-3 text-success" style="display: none;">
-    ✔ Changes saved
-  </div>
+<h2 class="mb-4">Mitgliederübersicht</h2>
+<div class="table-responsive">
+  <table class="table table-striped table-hover align-middle">
+    <thead class="table-dark">
+      <tr>
+        <th scope="col" class="ps-3">Name</th>
+        <th scope="col">Titel</th>
+        <th scope="col">Resident?</th>
+        <th class="d-none d-md-table-cell" scope="col">E-Mail</th>
+        <th class="d-none d-lg-table-cell" scope="col">Erstellt am</th>
+        <th class="text-center" scope="col">Kontostand(€)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for member in members %}
+      <tr>
+        <td class="ps-3">{{ member.last_name }}{% if member.first_name %} ({{ member.first_name }}){% endif %}</td>
+        <td>
+          <select class="form-select form-select-sm" onchange="updateTitle('{{ member.email }}', this.value)">
+            {% for t in all_titles %}
+              <option value="{{ t }}" {% if t == member.title %}selected{% endif %}>{{ t }}</option>
+            {% endfor %}
+          </select>
+        </td>
+        <td class="text-center">
+          <div class="form-check form-switch d-flex justify-content-center">
+            <input class="form-check-input" type="checkbox"
+                   {% if member.is_resident %}checked{% endif %}
+                   onchange="updateResidency('{{ member.email }}', this.checked)">
+          </div>
+        </td>
+        <td class="d-none d-md-table-cell">{{ member.email }}</td>
+        <td class="d-none d-lg-table-cell">{{ member.created_at }}</td>
+        <td class="text-center">{{ "%.2f"|format(member.get_balance()) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
 </div>
+{% endblock %}
 
+{% block scripts %}
 <script>
-function markChanged(selectElement) {
-  const original = selectElement.dataset.original;
-  const current = selectElement.value;
-  const statusCell = selectElement.closest("tr").querySelector(".status-indicator");
-
-  if (original === current) {
-    statusCell.innerHTML = '<i class="bi bi-check-circle text-success"></i>';
-  } else {
-    statusCell.innerHTML = '<i class="bi bi-pencil-square text-warning"></i>';
-  }
+function updateTitle(email, newTitle) {
+  fetch('/admin/update_title', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ email: email, title: newTitle })
+  }).then(res => {
+    if (!res.ok) alert('Fehler beim Aktualisieren des Titels.');
+  });
 }
 
-document.getElementById("statusForm").addEventListener("submit", function(event) {
-  event.preventDefault();
-
-  const selects = document.querySelectorAll("select[data-email]");
-  const updates = [];
-
-  selects.forEach(sel => {
-    const email = sel.dataset.email;
-    const original = sel.dataset.original;
-    const current = sel.value;
-
-    if (original !== current) {
-      updates.push({ email: email, new_title: current });
-    }
+function updateResidency(email, isResident) {
+  fetch('/admin/update_residency', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ email: email, is_resident: isResident })
+  }).then(res => {
+    if (!res.ok) alert('Fehler beim Aktualisieren des Wohnsitzstatus.');
   });
-
-  if (updates.length === 0) return;
-
-  fetch("/update_titles_bulk", {
-    method: "POST",
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ updates: updates })
-  })
-  .then(response => response.json())
-  .then(data => {
-    if (data.success) {
-      document.getElementById("saveResult").style.display = "block";
-      selects.forEach(sel => {
-        sel.dataset.original = sel.value;
-        markChanged(sel);
-      });
-    }
-  });
-});
+}
 </script>
 {% endblock %}

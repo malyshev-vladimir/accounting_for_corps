@@ -7,7 +7,7 @@ from datetime import date, datetime
 from models.transaction import Transaction
 from models.member import Member, Title
 from models.transaction_type import TransactionType
-from services.logging_db import log_transaction_change
+from services.logging_db import log_transaction_change, log_title_change, log_residency_change
 from services.members_db import load_member_by_email, load_all_members
 from services.report_sender import send_report_email
 from services.settings_loader import get_admin_email, get_monthly_payment_for_residents, \
@@ -326,77 +326,62 @@ def delete_transaction(email, transaction_id):
         return f"[!] Error deleting transaction: {e}", 400
 
 
-@app.route('/admin/change_title')
-def admin_change_title():
+@app.route('/admin/edit_titles_and_residency')
+def edit_titles_and_residency():
     """
-    Display the form for editing member titles.
+   Renders the admin page for editing titles and residency status for all members.
 
-    GET: Show table of all members with dropdown to update their title.
-    """
-    # Load all members and prepare simplified data for template rendering
+   This page allows admins to view all members and modify their title and residency status.
+   The titles are retrieved from the `Title` enum, and the members are fetched from the database.
+
+   GET: Fetch all members and available titles, then render the edit page.
+   """
     members = load_all_members()
-
-    # Prepare data for template
-    member_data = [
-        {
-            'email': m.email,
-            'last_name': m.last_name,
-            'current_title': m.title
-        }
-        for m in members
-    ]
-
-    # Mapping of title codes to human-readable descriptions
-    title_labels = {
-        "F": "Fuchs",
-        "CB": "Corpsbursch",
-        "iaCB": "inaktiver Corpsbursch",
-        "AH": "Alter Herr"
-    }
-
-    # Render the page with member list and dropdown options
+    all_titles = list(Title)  # [Title.F, Title.CB, Title.iaCB, Title.AH]
     return render_template(
-        'admin_change_title.html',
-        members=member_data,
-        possible_titles=[t.value for t in Title],
-        title_labels=title_labels
+        'admin_edit_titles_and_residency.html',
+        members=members,
+        all_titles=all_titles
     )
 
 
-@app.route('/update_titles_bulk', methods=['POST'])
-def update_titles_bulk():
+@app.route('/admin/update_member_status', methods=['POST'])
+def update_member_status():
     """
-    Bulk update titles for multiple members.
+    Updates the title and residency status for a specific member.
 
-    POST: Accept a JSON array of updates, apply title changes, and return a summary.
+    This function accepts a JSON payload with the email, new title, and new residency status.
+    It checks if the title or residency status has changed, and if so, updates the values in the database.
+    It also logs the changes to the respective logs.
+
+    POST: Accepts JSON with email, new title, and residency status.
+    Returns a success message or an error message if any field is missing or invalid.
     """
-    # Parse request body as JSON
     data = request.get_json()
-    updates = data.get("updates", [])
+    email = data.get('email')
+    new_title = data.get('title')
+    new_resident = data.get('is_resident')
+    changed_by = get_admin_email()
 
-    # Validate format
-    if not isinstance(updates, list):
-        return jsonify({"success": False, "error": "Invalid format"}), 400
+    if not email or new_title is None or new_resident is None:
+        return jsonify({'error': 'Missing fields'}), 400
 
-    updated = 0  # Counter to track how many updates were successful
+    try:
+        member = load_member_by_email(email)
 
-    # Iterate through all submitted updates
-    for update in updates:
-        email = update.get("email")
-        new_title = update.get("new_title")
+        if member.title != new_title:
+            member.change_title(new_title, changed_by)
+            log_title_change(email, new_title, changed_by)
 
-        if not email or not new_title:
-            continue
+        if member.is_resident != new_resident:
+            member.change_residency(new_resident, changed_by)
+            log_residency_change(email, new_resident, changed_by)
 
-        try:
-            member = load_member_by_email(email)
-            member.change_title_to(new_title, changed_by=get_admin_email())
-            updated += 1
-        except Exception as e:
-            logging.error(f"[!] Error updating title for {email}: {e}")
-            continue
+        return jsonify({'status': 'success'})
 
-    return jsonify({"success": True, "updated": updated})
+    except Exception as e:
+        logging.error(f"[!] Failed to update member {email}: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route("/send_report", methods=["POST"])

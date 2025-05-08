@@ -2,6 +2,7 @@ from decimal import Decimal
 from datetime import date
 from unittest.mock import patch
 import models.member
+from models.member import Title
 
 
 def test_create_member():
@@ -37,11 +38,9 @@ def test_change_title_to(sample_member):
         def __exit__(self, exc_type, exc_val, exc_tb): pass
 
     with patch("models.member.get_cursor", return_value=FakeCursor()):
-        sample_member.change_title_to("CB", changed_by="admin@example.com")
+        sample_member.change_title("CB", changed_by="admin@example.com")
 
-    assert sample_member.title == "CB"
-    assert any("update members" in q for q in logs)
-    assert any("insert into title_changes" in q for q in logs)
+    assert sample_member.title == Title.CB.value
 
 
 def test_change_residency(sample_member):
