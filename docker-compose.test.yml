@@ -1,0 +1,11 @@
+version: '3.9'
+
+services:
+  accounting_tests:
+    build:
+      context: .
+    volumes:
+      - .:/app
+    environment:
+      PYTHONPATH: /app
+    command: pytest tests/ --maxfail=3 --disable-warnings -v

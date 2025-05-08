@@ -3,7 +3,7 @@ flask
 python-dotenv
 
 # PostgreSQL database driver
-psycopg2
+psycopg2-binary
 
 # Date handling (for relativedelta)
 python-dateutil
