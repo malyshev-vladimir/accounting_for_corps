@@ -1,14 +1,18 @@
 import logging
+import os
 
+from werkzeug.utils import secure_filename
 from flask import Flask, render_template, request, redirect, url_for, jsonify
 from decimal import Decimal, InvalidOperation
 from datetime import date, datetime
+
 
 from models.transaction import Transaction
 from models.member import Member, Title
 from models.transaction_type import TransactionType
 from services.logging_db import log_transaction_change, log_title_change, log_residency_change
 from services.members_db import load_member_by_email, load_all_members
+from services.reimbursements_db import save_reimbursement_items, update_bank_details
 from services.report_sender import send_report_email
 from services.settings_loader import get_admin_email, get_monthly_payment_for_residents, \
     get_monthly_payment_for_non_residents
@@ -18,6 +22,10 @@ from services.transactions_db import load_transactions_by_email, load_transactio
 # Initialize the Flask application
 app = Flask(__name__)
 
+# Configure the uploads folder for saving receipts
+UPLOAD_FOLDER = "uploads"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
 @app.route('/', methods=['GET'])
 def home():
@@ -29,30 +37,112 @@ def home():
     return render_template("index.html")
 
 
-@app.route('/dashboard', methods=['POST'])
+@app.route('/dashboard', methods=['GET', 'POST'])
 def dashboard():
     """
-    Display the member dashboard or redirect to admin panel if admin logs in.
+    Display the member dashboard or redirect to "admin panel" if admin logs in.
 
-    POST: Accept member email from login form and redirect accordingly.
+    GET: Accept member email from query string (?email=...)
+    POST: Accept member email from login form.
     """
-    email = request.form.get("email", "").strip().lower()
+    # Extract email from a form or query string
+    email = request.form.get("email") if request.method == "POST" else request.args.get("email")
+    if not email:
+        return "[!] No email provided.", 400
+    email = email.strip().lower()
 
-    # Redirect admin users to the admin panel
+    # Redirect admin user to "admin panel"
     if email == get_admin_email():
         return redirect(url_for("admin_panel"))
 
-    # Load the member from the database
+    # Load member by email
     try:
         member = load_member_by_email(email)
     except ValueError:
         return f"[!] No member found with this email: {email}", 404
 
+    # Calculate balance and fetch transactions
     member.balance = member.get_balance()
     member.transactions = member.get_transactions()
 
-    # Render the dashboard for the member
+    # Render the member dashboard
     return render_template("dashboard.html", member=member)
+
+
+
+@app.route("/reimbursement-form/<email>")
+
+def reimbursement_form(email):
+    """
+    Render the reimbursement submission form for a specific member.
+
+    GET: Load member data by email and render a form pre-filled with name and date.
+    """
+    # Load the member from the database
+    member = load_member_by_email(email)
+    if not member:
+        return "Mitglied nicht gefunden", 404
+
+    # Render the reimbursement form, passing member data and current date
+    return render_template(
+        "reimbursement_form.html",
+        member=member,
+        current_date=date.today().strftime("%d.%m.%Y")
+    )
+
+
+@app.route("/submit-reimbursement", methods=["POST"])
+def submit_reimbursement():
+    """
+    Handle the reimbursement form submission and store all valid entries.
+
+    POST:
+    - Parse form fields including description, date, amount, receipt
+    - Save uploaded files to disk
+    - Validate that all fields are present per row before saving
+    - Optionally store updated bank data
+    - Save valid reimbursement items to the database
+    - Redirect to the member's dashboard
+    """
+    # Retrieve basic form fields
+    email = request.form.get("email")
+    refund_type = request.form.get("refund_type")
+    bank_name = request.form.get("bank_name")
+    iban = request.form.get("iban")
+
+    # Collect all repeated row data from the form
+    descriptions = request.form.getlist("description[]")
+    dates = request.form.getlist("date[]")
+    amounts = request.form.getlist("amount[]")
+    files = request.files.getlist("receipt[]")
+
+    # Process each row and save only fully filled ones
+    entries = []
+    for desc, dt, amt, file in zip(descriptions, dates, amounts, files):
+        # Ensure all fields are filled and a file is uploaded
+        if desc.strip() and dt.strip() and amt.strip() and file and file.filename:
+            filename = secure_filename(file.filename)
+            filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+            file.save(filepath) # Save uploaded file
+
+            # Add a validated row-to-entries list
+            entries.append({
+                "description": desc,
+                "date": dt,
+                "amount": amt,
+                "receipt_filename": filename
+            })
+
+    # Save all valid reimbursement rows to the database
+    if entries:
+        save_reimbursement_items(email, entries)
+
+    # Optionally update bank details if "Bankkonto" is selected
+    if refund_type == "bank" and bank_name.strip() and iban.strip():
+        update_bank_details(email, bank_name, iban)
+
+    # Redirect back to dashboard after successful submission
+    return redirect(url_for("dashboard", email=email))
 
 
 @app.route("/admin", methods=["GET"])
@@ -79,7 +169,7 @@ def admin_add_member():
     """
     Allow admin to create a new member via form submission.
 
-    GET: Render the add member form.
+    GET: Render the "add member" form.
     POST: Validate and save the new member to the database.
     """
     if request.method == 'POST':
@@ -104,7 +194,7 @@ def admin_add_member():
         if title not in Title._value2member_map_:
             return "[!] Invalid title", 400
 
-        # Check if member already exists
+        # Check if the member already exists
         try:
             load_member_by_email(email)
             return f"[!] Member with email {email} already exists.", 400
@@ -125,7 +215,7 @@ def admin_add_member():
         # Redirect to the admin panel
         return redirect(url_for("admin_panel"))
 
-    # Render the add member form
+    # Render "add member" form
     return render_template("admin_add_member.html")
 
 
@@ -134,7 +224,7 @@ def check_all_missing_monthly_payments():
     """
     Display the page for manually reviewing and adding missing monthly payments.
 
-    GET: For each member (except AH), load both existing and missing monthly payments,
+    GET: For each member (except AH), load both existing and missing monthly payments
          and render an editable table grouped by member.
     """
     members = load_all_members()

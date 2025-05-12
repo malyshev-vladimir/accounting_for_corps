@@ -25,7 +25,7 @@
                     </tr>
                     </thead>
                     <tbody>
-                    {% for tx in member.transactions %}
+                    {% for tx in member.get_transactions() %}
                     <tr>
                         <td>{{ tx.date }}</td>
                         <td>{{ tx.amount }}</td>
@@ -36,7 +36,12 @@
                 </table>
             </div>
 
-            <a href="/" class="btn btn-secondary mt-3">Zurück</a>
+            <div class="d-flex justify-content-between mt-3">
+                <a href="/" class="btn btn-secondary">Zurück</a>
+                <a href="{{ url_for('reimbursement_form', email=member.email) }}" class="btn btn-success">
+                    Auslagen melden
+                </a>
+            </div>
         </div>
     </div>
 </div>

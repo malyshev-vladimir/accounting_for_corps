@@ -46,3 +46,30 @@ CREATE TABLE IF NOT EXISTS transaction_change_log (
     changed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     description TEXT
 );
+
+-- Table: reimbursement_items (одна строка заявки на возмещение)
+CREATE TABLE IF NOT EXISTS reimbursement_items (
+    id SERIAL PRIMARY KEY,
+    member_email VARCHAR NOT NULL REFERENCES members(email) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    description TEXT NOT NULL,
+    date TEXT NOT NULL,
+    amount NUMERIC(10,2) NOT NULL,
+    receipt_filename TEXT
+);
+
+-- Table: bank_details (последние банковские данные участника)
+CREATE TABLE IF NOT EXISTS bank_details (
+    id SERIAL PRIMARY KEY,
+    member_email VARCHAR NOT NULL REFERENCES members(email) ON DELETE CASCADE,
+    bank_name TEXT NOT NULL,
+    iban TEXT NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Indexes for performance
+CREATE INDEX IF NOT EXISTS idx_transactions_email ON transactions(member_email);
+CREATE INDEX IF NOT EXISTS idx_title_changes_email ON title_changes(member_email);
+CREATE INDEX IF NOT EXISTS idx_residency_changes_email ON residency_changes(member_email);
+CREATE INDEX IF NOT EXISTS idx_bank_accounts_email ON bank_details(member_email);
+CREATE INDEX IF NOT EXISTS idx_reimbursement_email ON reimbursement_items(member_email);
