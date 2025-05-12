@@ -3,6 +3,7 @@ FROM python:3.9-slim
 
 # Set the working directory inside the container
 WORKDIR /app
+COPY . .
 
 # Copy project files into the container
 COPY . .
