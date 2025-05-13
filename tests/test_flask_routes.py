@@ -4,7 +4,7 @@ import pytest
 from app import app
 from decimal import Decimal
 from unittest.mock import patch, MagicMock
-from models.member import Member
+from io import BytesIO
 
 
 @pytest.fixture
@@ -49,6 +49,74 @@ def test_dashboard_member_not_found(client):
             patch("app.load_member_by_email", side_effect=ValueError("not found")):
         response = client.post("/dashboard", data={"email": "nonexistent@example.com"})
         assert response.status_code == 404
+
+
+# ROUTE: GET /reimbursement-form/<email>
+
+def test_reimbursement_form_success(client):
+    with patch("app.load_member_by_email") as mock_load:
+        mock_member = MagicMock()
+        mock_member.first_name = "Max"
+        mock_member.last_name = "Muster"
+        mock_load.return_value = mock_member
+
+        response = client.get("/reimbursement-form/user@example.com")
+        assert response.status_code == 200
+        assert b"Erstattungsformular" in response.data or b"erstattung" in response.data.lower()
+
+
+def test_reimbursement_form_member_not_found(client):
+    with patch("app.load_member_by_email", return_value=None):
+        response = client.get("/reimbursement-form/user@example.com")
+        assert response.status_code == 404
+        assert b"mitglied nicht gefunden" in response.data.lower()
+
+
+# ROUTE: POST /submit-reimbursement
+
+def test_submit_reimbursement_valid_entry(client):
+    with patch("app.save_reimbursement_items") as mock_save, \
+         patch("app.update_bank_details") as mock_update:
+        data = {
+            "email": "user@example.com",
+            "refund_type": "bank",
+            "bank_name": "Test Bank",
+            "iban": "DE00123456780000000000",
+            "description[]": ["Test"],
+            "date[]": ["01.05.2024"],
+            "amount[]": ["10.00"],
+            "receipt[]": [(BytesIO(b"dummy pdf"), "receipt.pdf")]
+        }
+
+        response = client.post("/submit-reimbursement", data=data, content_type='multipart/form-data')
+        assert response.status_code == 302
+        assert mock_save.called
+        assert mock_update.called
+
+
+def test_submit_reimbursement_skips_incomplete_entries(client):
+    with patch("app.save_reimbursement_items") as mock_save, \
+            patch("app.update_bank_details") as mock_update:
+        data = {
+            "email": "user@example.com",
+            "refund_type": "bank",
+            "bank_name": "Test Bank",
+            "iban": "DE00123456780000000000",
+            "description[]": ["", "Filled"],
+            "date[]": ["", "01.05.2024"],
+            "amount[]": ["", "15.00"],
+            "receipt[]": [
+                (BytesIO(b""), ""),  # Empty
+                (BytesIO(b"data"), "receipt2.pdf")  # Valid
+            ]
+        }
+
+        response = client.post("/submit-reimbursement", data=data, content_type='multipart/form-data')
+        assert response.status_code == 302
+        mock_save.assert_called_once()
+        args = mock_save.call_args[0][1]
+        assert len(args) == 1  # Only one entry is saved
+        assert args[0]["description"] == "Filled"
 
 
 # ROUTE: GET /admin
