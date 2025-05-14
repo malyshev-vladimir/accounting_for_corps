@@ -1,5 +1,6 @@
 import logging
 import os
+import uuid
 
 from werkzeug.utils import secure_filename
 from flask import Flask, render_template, request, redirect, url_for, jsonify
@@ -121,9 +122,18 @@ def submit_reimbursement():
     for desc, dt, amt, file in zip(descriptions, dates, amounts, files):
         # Ensure all fields are filled and a file is uploaded
         if desc.strip() and dt.strip() and amt.strip() and file and file.filename:
-            filename = secure_filename(file.filename)
+            # Save the original file name and extension for later use
+            original_name = secure_filename(file.filename)
+            ext = os.path.splitext(original_name)[1]
+            # Generate a new name: email_YYYYMMDD_desc_uuid.pdf
+            short_desc = "_".join(desc.strip().lower().split())[:20]
+            date_part = datetime.strptime(dt, "%d.%m.%Y").strftime("%Y%m%d")
+            member = load_member_by_email(email)
+            unique_id = uuid.uuid4().hex[:8]
+            filename = f"{short_desc}_{date_part}_{member.last_name}_{unique_id}{ext}"
+            # Save the file to the uploads folder with the new name
             filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
-            file.save(filepath) # Save uploaded file
+            file.save(filepath)
 
             # Add a validated row-to-entries list
             entries.append({

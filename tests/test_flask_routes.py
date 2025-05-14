@@ -76,47 +76,122 @@ def test_reimbursement_form_member_not_found(client):
 
 def test_submit_reimbursement_valid_entry(client):
     with patch("app.save_reimbursement_items") as mock_save, \
-         patch("app.update_bank_details") as mock_update:
+            patch("app.update_bank_details") as mock_update, \
+            patch("app.load_member_by_email") as mock_load:
+        mock_member = MagicMock()
+        mock_member.last_name = "Muster"
+        mock_load.return_value = mock_member
+
         data = {
             "email": "user@example.com",
             "refund_type": "bank",
             "bank_name": "Test Bank",
             "iban": "DE00123456780000000000",
-            "description[]": ["Test"],
-            "date[]": ["01.05.2024"],
-            "amount[]": ["10.00"],
-            "receipt[]": [(BytesIO(b"dummy pdf"), "receipt.pdf")]
+            "description[]": ["Fahrt nach Berlin"],
+            "date[]": ["13.05.2025"],
+            "amount[]": ["19.90"],
+            "receipt[]": (BytesIO(b"dummy pdf"), "beleg.pdf")
         }
 
         response = client.post("/submit-reimbursement", data=data, content_type='multipart/form-data')
+
         assert response.status_code == 302
         assert mock_save.called
         assert mock_update.called
 
+        # Check the structure of saved data
+        args = mock_save.call_args[0][1]
+        assert isinstance(args, list)
+        assert len(args) == 1
+        item = args[0]
+        assert item["description"] == "Fahrt nach Berlin"
+        assert item["date"] == "13.05.2025"
+        assert item["amount"] == "19.90"
+
+        # Check filename structure: f"{short_desc}_{date_part}_{member.last_name}_{uuid}{ext}"
+        assert re.match(r"fahrt_nach_berlin_20250513_Muster_[a-f0-9]{8}\.pdf", item["receipt_filename"])
+
+
+def test_submit_reimbursement_all_entries_invalid(client):
+    with patch("app.save_reimbursement_items") as mock_save, \
+            patch("app.update_bank_details") as mock_update, \
+            patch("app.load_member_by_email") as mock_load:
+        mock_load.return_value = MagicMock(last_name="Invalid")
+
+        data = {
+            "email": "user@example.com",
+            "refund_type": "bank",
+            "bank_name": "Bank",
+            "iban": "DE00000000000000000000",
+            "description[]": ["", ""],
+            "date[]": ["", ""],
+            "amount[]": ["", ""],
+            "receipt[]": [
+                (BytesIO(b""), ""), (BytesIO(b""), "")
+            ]
+        }
+
+        response = client.post("/submit-reimbursement", data=data, content_type="multipart/form-data")
+
+        assert response.status_code == 302
+        mock_save.assert_not_called()  # nothing is saved
+        mock_update.assert_called_once()  # but bank_details are updated
+
 
 def test_submit_reimbursement_skips_incomplete_entries(client):
     with patch("app.save_reimbursement_items") as mock_save, \
-            patch("app.update_bank_details") as mock_update:
+            patch("app.update_bank_details") as mock_update, \
+            patch("app.load_member_by_email") as mock_load:
+        mock_member = MagicMock()
+        mock_member.last_name = "Test"
+        mock_load.return_value = mock_member
+
         data = {
             "email": "user@example.com",
             "refund_type": "bank",
             "bank_name": "Test Bank",
             "iban": "DE00123456780000000000",
-            "description[]": ["", "Filled"],
+            "description[]": ["", "Taxi zur Uni"],
             "date[]": ["", "01.05.2024"],
             "amount[]": ["", "15.00"],
             "receipt[]": [
-                (BytesIO(b""), ""),  # Empty
-                (BytesIO(b"data"), "receipt2.pdf")  # Valid
+                (BytesIO(b""), ""),  # Incomplete
+                (BytesIO(b"valid"), "beleg2.pdf")  # Valid
             ]
         }
 
         response = client.post("/submit-reimbursement", data=data, content_type='multipart/form-data')
         assert response.status_code == 302
+
+        # Only one complete entry should be saved
         mock_save.assert_called_once()
-        args = mock_save.call_args[0][1]
-        assert len(args) == 1  # Only one entry is saved
-        assert args[0]["description"] == "Filled"
+        entries = mock_save.call_args[0][1]
+        assert len(entries) == 1
+        assert entries[0]["description"] == "Taxi zur Uni"
+
+
+def test_submit_reimbursement_without_bank_info(client):
+    with patch("app.save_reimbursement_items") as mock_save, \
+            patch("app.update_bank_details") as mock_update, \
+            patch("app.load_member_by_email") as mock_load:
+        mock_load.return_value = MagicMock(last_name="Nobank")
+
+        data = {
+            "email": "user@example.com",
+            "refund_type": "bank",  # type "bank" selected
+            "bank_name": "",  # but no bank name provided
+            "iban": "",
+            "description[]": ["Taxi"],
+            "date[]": ["01.05.2024"],
+            "amount[]": ["15.00"],
+            "receipt[]": (BytesIO(b"valid"), "beleg.pdf")
+        }
+
+        response = client.post("/submit-reimbursement", data=data, content_type='multipart/form-data')
+
+        assert response.status_code == 302
+        mock_save.assert_called_once()
+        mock_update.assert_not_called()  # bank details are not updated
 
 
 # ROUTE: GET /admin
