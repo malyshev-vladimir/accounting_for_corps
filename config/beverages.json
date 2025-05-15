@@ -1,0 +1,12 @@
+[
+  {"name": "Pils (0,5L)", "price": 1.04},
+  {"name": "Helles (0,5L)", "price": 1.04},
+  {"name": "Radler (0,33L)", "price": 0.72},
+  {"name": "Weißbier (0,5L)", "price": 1.10},
+  {"name": "Spezi (0,33L)", "price": 0.94},
+  {"name": "Sinalco (1L)", "price": 1.37},
+  {"name": "Wasser Still (1L)", "price": 0.98},
+  {"name": "Wasser Spritzig (1L)", "price": 0.84},
+  {"name": "Äppler (1L)", "price": 1.96},
+  {"name": "ISO (0,33L)", "price": 1.00}
+]

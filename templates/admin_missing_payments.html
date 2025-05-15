@@ -1,7 +1,7 @@
 {% extends "admin_base.html" %}
 
 {% block content %}
-<div class="container mt-4">
+<div class="container mt-4" style="max-width: 600px;">
     <h2 class="mb-4">Fehlende Aktivenbeiträge nach Mitglied</h2>
     <form id="missingPaymentsForm">
         {% for block in members %}
@@ -68,4 +68,5 @@
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/missing_payments.js') }}"></script>
+<script src="{{ url_for('static', filename='js/section_toggle.js') }}"></script>
 {% endblock %}

@@ -7,10 +7,10 @@ from flask import Flask, render_template, request, redirect, url_for, jsonify
 from decimal import Decimal, InvalidOperation
 from datetime import date, datetime
 
-
 from models.transaction import Transaction
 from models.member import Member, Title
 from models.transaction_type import TransactionType
+from services.beverage_db import save_beverage_report
 from services.logging_db import log_transaction_change, log_title_change, log_residency_change
 from services.members_db import load_member_by_email, load_all_members
 from services.reimbursements_db import save_reimbursement_items, update_bank_details
@@ -19,6 +19,7 @@ from services.settings_loader import get_admin_email, get_monthly_payment_for_re
     get_monthly_payment_for_non_residents
 from services.monthly_payments import get_missing_monthly_payment_transactions
 from services.transactions_db import load_transactions_by_email, load_transaction_by_id, load_transactions_by_type
+from services.beverage_loader import load_beverage_assortment
 
 # Initialize the Flask application
 app = Flask(__name__)
@@ -27,6 +28,7 @@ app = Flask(__name__)
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+
 
 @app.route('/', methods=['GET'])
 def home():
@@ -70,9 +72,7 @@ def dashboard():
     return render_template("dashboard.html", member=member)
 
 
-
 @app.route("/reimbursement-form/<email>")
-
 def reimbursement_form(email):
     """
     Render the reimbursement submission form for a specific member.
@@ -304,6 +304,91 @@ def save_missing_payments():
             continue
 
     return jsonify({"success": True, "saved": saved_count})
+
+
+@app.route("/admin/beverage-report", methods=["GET", "POST"])
+def beverage_report():
+    """
+    Render the beverage report input form for the admin.
+
+    GET:
+    - Load all members from the database
+    - Load current beverage assortment from config
+    - Render the report input form with dynamic table
+    """
+    members = load_all_members()
+    beverages = load_beverage_assortment()
+    return render_template("beverage_report.html", members=members, beverages=beverages)
+
+
+@app.route("/submit-beverage-report", methods=["POST"])
+def submit_beverage_report():
+    """
+    Handle the submission of a beverage consumption report and create transactions.
+
+    POST:
+    - Parse form data with member drink consumption
+    - Save the report and beverage prices to the database
+    - Calculate total cost per member
+    - Create and save a DRINKS transaction for each member
+    - Redirect back to the beverage report page
+    """
+    form = request.form
+    report_date_str = form.get("report_date")
+
+    # Ensure a report date is provided
+    if not report_date_str:
+        return redirect(url_for("beverage_report"))
+
+    # Parse the date into a Python date object
+    try:
+        report_date = datetime.strptime(report_date_str.strip(), "%d.%m.%Y").date()
+    except ValueError:
+        return redirect(url_for("beverage_report"))
+
+    # Load beverage assortment and build a price map
+    beverages = load_beverage_assortment()
+    beverage_map = {b["name"]: Decimal(str(b["price"])) for b in beverages}
+
+    # Save report and detailed consumption entries
+    save_beverage_report(form, beverages, report_date)
+
+    # Calculate the total amount per member
+    member_totals = {}
+
+    for key, values in form.items():
+        if "_" not in key or key.startswith("event_"):
+            continue
+
+        email, bev = key.split("_", 1)
+        if bev not in beverage_map:
+            continue
+
+        value_str = values.strip()
+        if not value_str.isdigit():
+            continue
+
+        count = int(value_str)
+        if count == 0:
+            continue
+
+        total = beverage_map[bev] * count
+        member_totals[email] = member_totals.get(email, Decimal("0.00")) + total
+
+    # Create one DRINKS transaction for each member
+    changed_by = get_admin_email()
+
+    for email, total in member_totals.items():
+        tx = Transaction(
+            transaction_date=report_date,
+            description=f"Getränkeabrechnung vom {report_date.strftime('%d.%m.%Y')}",
+            amount=-total,
+            member_email=email,
+            transaction_type=TransactionType.DRINKS
+        )
+        tx.save(changed_by=changed_by)
+
+    return redirect(url_for("beverage_report"))
 
 
 @app.route("/admin/add_transaction", methods=["GET", "POST"])

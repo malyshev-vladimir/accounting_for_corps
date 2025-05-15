@@ -1,0 +1,122 @@
+{% extends "admin_base.html" %}
+
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/beverage_report.css') }}">
+
+<div class="container mt-4" style="max-width: 1140px;">
+    <form id="beverageForm" method="post" action="{{ url_for('submit_beverage_report') }}">
+        <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+            <h2 class="m-0 d-flex align-items-center gap-2">
+                Getränkeabrechnung vom
+                <div class="input-group" style="width: 170px;">
+                    <input type="text" name="report_date" id="reportDate"
+                           class="form-control form-control-sm" placeholder="TT.MM.JJJJ" readonly>
+                </div>
+            </h2>
+            <button type="submit" class="btn btn-success">
+                <i class="bi bi-check-lg me-1"></i> Speichern
+            </button>
+        </div>
+
+        <div class="card mb-5">
+            <div class="header-dark">Einzelverbrauch aller Mitglieder</div>
+            <div class="card-body">
+                <div class="grid-wrapper">
+                    <div class="grid-table" id="memberGrid"
+                         style="grid-template-columns: auto {% for _ in beverages %}70px {% endfor %}60px;">
+                        <div class="grid-header">Name</div>
+                        {% for bev in beverages %}
+                        <div class="grid-header">{{ bev.name }}</div>
+                        {% endfor %}
+                        <div class="grid-header">Summe (€)</div>
+
+                        <div class="grid-header"></div>
+                        {% for bev in beverages %}
+                        <div class="grid-header">{{ '%.2f'|format(bev.price) }} €</div>
+                        {% endfor %}
+                        <div class="grid-header"></div>
+
+                        {% for member in members %}
+                        <div class="member-cell row-toggle" data-type="member" data-key="{{ member.email }}">
+                            <span class="row-label member-name">{{ member.last_name }} {{ member.first_name }}</span>
+                        </div>
+                        {% for bev in beverages %}
+                        <div class="member-cell" data-member="{{ member.email }}">
+                            <input type="number" name="{{ member.email }}_{{ bev.name }}"
+                                   class="form-control form-control-sm getr-value"
+                                   data-member="{{ member.email }}" data-bev="{{ bev.name }}" step="1" min="0">
+                        </div>
+                        {% endfor %}
+                        <div class="member-cell" data-member="{{ member.email }}">
+                            <span class="sum-cell" id="sum-{{ member.email }}">0.00</span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-5">
+            <div class="header-dark">Verbrauch bei Veranstaltungen</div>
+            <div class="card-body">
+                <div class="grid-wrapper">
+                    <div class="grid-table" id="eventGrid"
+                         style="grid-template-columns: auto {% for _ in beverages %}70px {% endfor %}60px 42px;">
+
+                        <div class="grid-header">Veranstaltung</div>
+                        {% for bev in beverages %}
+                        <div class="grid-header">{{ bev.name }}</div>
+                        {% endfor %}
+                        <div class="grid-header">Summe (€)</div>
+                        <div class="grid-header"></div>
+
+                        <div class="grid-header"></div>
+                        {% for bev in beverages %}
+                        <div class="grid-header">{{ '%.2f'|format(bev.price) }} €</div>
+                        {% endfor %}
+                        <div class="grid-header"></div>
+                        <div class="grid-header"></div>
+
+                        <div class="event-row">
+                            <input type="text" name="event_title[]" class="form-control form-control-sm event-input">
+                        </div>
+                        {% for bev in beverages %}
+                        <div class="event-row">
+                            <input type="number" name="event_{{ bev.name }}[]"
+                                   class="form-control form-control-sm event-value" step="1" min="0">
+                        </div>
+                        {% endfor %}
+                        <div class="event-row"><span class="event-sum">0.00</span></div>
+                        <div class="event-row d-flex align-items-center justify-content-center">
+                            <button type="button" class="delete-btn btn btn-outline-danger btn-sm px-2 py-0"
+                                    title="Zeile löschen">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="text-end mt-2">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="addEventBtn">
+                        + Veranstaltung
+                    </button>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    window.beveragePrices = {{ beverages | tojson }};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script type="module" src="{{ url_for('static', filename='js/beverage/init.js') }}"></script>
+<script>
+    flatpickr("#reportDate", {
+        dateFormat: "d.m.Y",
+        defaultDate: "today"
+    });
+</script>
+{% endblock %}
