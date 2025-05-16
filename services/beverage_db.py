@@ -59,6 +59,9 @@ def save_beverage_report(form, beverages, report_date) -> int:
         event_entries = []
         titles = form.getlist("event_title[]")
         for i, title in enumerate(titles):
+            title = title.strip()
+            if not title:
+                continue
             for bev in beverage_names:
                 values = form.getlist(f"event_{bev}[]")
                 if i < len(values) and values[i].isdigit():

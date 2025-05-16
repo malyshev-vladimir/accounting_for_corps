@@ -338,12 +338,14 @@ def submit_beverage_report():
 
     # Ensure a report date is provided
     if not report_date_str:
+        logging.error("No report date provided")
         return redirect(url_for("beverage_report"))
 
     # Parse the date into a Python date object
     try:
         report_date = datetime.strptime(report_date_str.strip(), "%d.%m.%Y").date()
     except ValueError:
+        logging.error("Invalid report date format")
         return redirect(url_for("beverage_report"))
 
     # Load beverage assortment and build a price map
