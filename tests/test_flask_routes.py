@@ -1,4 +1,5 @@
 import re
+from pathlib import Path
 
 import pytest
 from app import app
@@ -93,23 +94,31 @@ def test_submit_reimbursement_valid_entry(client):
             "receipt[]": (BytesIO(b"dummy pdf"), "beleg.pdf")
         }
 
-        response = client.post("/submit-reimbursement", data=data, content_type='multipart/form-data')
+        try:
+            response = client.post("/submit-reimbursement", data=data, content_type='multipart/form-data')
 
-        assert response.status_code == 302
-        assert mock_save.called
-        assert mock_update.called
+            assert response.status_code == 302
+            assert mock_save.called
+            assert mock_update.called
 
-        # Check the structure of saved data
-        args = mock_save.call_args[0][1]
-        assert isinstance(args, list)
-        assert len(args) == 1
-        item = args[0]
-        assert item["description"] == "Fahrt nach Berlin"
-        assert item["date"] == "13.05.2025"
-        assert item["amount"] == "19.90"
+            # Check the structure of saved data
+            args = mock_save.call_args[0][1]
+            assert isinstance(args, list)
+            assert len(args) == 1
+            item = args[0]
+            assert item["description"] == "Fahrt nach Berlin"
+            assert item["date"] == "13.05.2025"
+            assert item["amount"] == "19.90"
 
-        # Check filename structure: f"{short_desc}_{date_part}_{member.last_name}_{uuid}{ext}"
-        assert re.match(r"fahrt_nach_berlin_20250513_Muster_[a-f0-9]{8}\.pdf", item["receipt_filename"])
+            # Check filename structure: f"{short_desc}_{date_part}_{member.last_name}_{uuid}{ext}"
+            assert re.match(r"fahrt_nach_berlin_20250513_Muster_[a-f0-9]{8}\.pdf", item["receipt_filename"])
+
+        finally:
+            # Delete the created file
+            filename = item["receipt_filename"]
+            path = Path("uploads") / filename
+            if path.exists():
+                path.unlink()
 
 
 def test_submit_reimbursement_all_entries_invalid(client):
@@ -151,7 +160,7 @@ def test_submit_reimbursement_skips_incomplete_entries(client):
             "refund_type": "bank",
             "bank_name": "Test Bank",
             "iban": "DE00123456780000000000",
-            "description[]": ["", "Taxi zur Uni"],
+            "description[]": ["", "Taxi zur Hassia"],
             "date[]": ["", "01.05.2024"],
             "amount[]": ["", "15.00"],
             "receipt[]": [
@@ -160,14 +169,21 @@ def test_submit_reimbursement_skips_incomplete_entries(client):
             ]
         }
 
-        response = client.post("/submit-reimbursement", data=data, content_type='multipart/form-data')
-        assert response.status_code == 302
+        try:
+            response = client.post("/submit-reimbursement", data=data, content_type='multipart/form-data')
+            assert response.status_code == 302
 
-        # Only one complete entry should be saved
-        mock_save.assert_called_once()
-        entries = mock_save.call_args[0][1]
-        assert len(entries) == 1
-        assert entries[0]["description"] == "Taxi zur Uni"
+            # Only one complete entry should be saved
+            mock_save.assert_called_once()
+            entries = mock_save.call_args[0][1]
+            assert len(entries) == 1
+            assert entries[0]["description"] == "Taxi zur Hassia"
+        finally:
+            if mock_save.called:
+                item = mock_save.call_args[0][1][0]
+                path = Path("uploads") / item["receipt_filename"]
+                if path.exists():
+                    path.unlink()
 
 
 def test_submit_reimbursement_without_bank_info(client):
@@ -186,12 +202,18 @@ def test_submit_reimbursement_without_bank_info(client):
             "amount[]": ["15.00"],
             "receipt[]": (BytesIO(b"valid"), "beleg.pdf")
         }
+        try:
+            response = client.post("/submit-reimbursement", data=data, content_type='multipart/form-data')
 
-        response = client.post("/submit-reimbursement", data=data, content_type='multipart/form-data')
-
-        assert response.status_code == 302
-        mock_save.assert_called_once()
-        mock_update.assert_not_called()  # bank details are not updated
+            assert response.status_code == 302
+            mock_save.assert_called_once()
+            mock_update.assert_not_called()  # bank details are not updated
+        finally:
+            if mock_save.called:
+                item = mock_save.call_args[0][1][0]
+                path = Path("uploads") / item["receipt_filename"]
+                if path.exists():
+                    path.unlink()
 
 
 # ROUTE: GET /admin
