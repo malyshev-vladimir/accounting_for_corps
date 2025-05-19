@@ -17,9 +17,9 @@ def load_transactions_by_email(email: str) -> List[Transaction]:
         cur.execute("""
             SELECT id, date, description, amount, transaction_type
             FROM transactions
-            WHERE member_email = %s
+            WHERE LOWER(member_email) = %s
             ORDER BY date
-        """, (email,))
+            """, (email.lower(),))
         rows = cur.fetchall()
 
     return [
