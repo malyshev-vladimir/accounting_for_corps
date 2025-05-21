@@ -48,7 +48,7 @@ def format_member_email(member: Member) -> str:
     - {{balance}} — the current account balance
     - {{title}} — member's title (e.g., CB)
     - {{last_name}} — member's last name
-    - {{phone_number}}  — kassenwart's phone number
+    - {{phone_number}} — kassenwart's phone number
 
     Returns:
         str: A fully formatted HTML email body ready to send.
@@ -62,20 +62,19 @@ def format_member_email(member: Member) -> str:
         template: str = f.read()
 
     # Sort the member's transactions by date (ascending)
-    sorted_tx = sorted(member.transactions, key=lambda t: t["date"])
+    sorted_tx = sorted(member.get_transactions(), key=lambda t: t.date)
 
     # Create HTML table rows
     transaction_rows = []
     for tx in sorted_tx:
         # Format the transaction date as "dd.mm.yy"
-        date_obj = datetime.strptime(tx["date"], "%Y-%m-%d")
-        date_formatted = date_obj.strftime("%d.%m.%y")
+        date_formatted = tx.date.strftime("%d.%m.%y")
 
         # Format amount using European comma format and add € symbol
-        amount = f'{tx["amount"]:.2f}'.replace(".", ",") + " €"
+        amount = f'{tx.amount:.2f}'.replace(".", ",") + " €"
 
         # Prepare the transaction description
-        description = tx["description"]
+        description = tx.description
 
         # Add table row (<tr>)
         row = f"<tr><td>{date_formatted}</td><td>{amount}</td><td>{description}</td></tr>"
@@ -85,7 +84,7 @@ def format_member_email(member: Member) -> str:
     transactions_html = "\n".join(transaction_rows)
 
     # Format final balance string
-    balance_str = f'{member.balance:.2f}'.replace(".", ",") + " €"
+    balance_str = f'{member.get_balance():.2f}'.replace(".", ",") + " €"
 
     # Replace all placeholders in the template
     filled = template.replace("{{transactions}}", transactions_html)
