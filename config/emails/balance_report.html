@@ -44,7 +44,7 @@
     </div>
 
     <div class="block">
-      hiermit informiere ich dich ({{title}} {{last_name}}) über deinen aktuellen Kontostand.
+      hiermit informiere ich dich ({{ title }} {{ last_name }}) über deinen aktuellen Kontostand.
     </div>
     <div class="block">
       Bitte überprüfe die Angaben und teile mir eventuelle Fehler oder Unstimmigkeiten mit.
@@ -59,12 +59,12 @@
         </tr>
       </thead>
       <tbody>
-        {{transactions}}
+        {{ transactions | safe }}
       </tbody>
     </table>
 
     <div class="block balance">
-      Somit ergibt sich ein derzeitiger Kontostand von: {{balance}}
+      Somit ergibt sich ein derzeitiger Kontostand von: {{ balance }}
     </div>
 
     <div class="block">
@@ -81,7 +81,7 @@
 
     <div class="block">
       Falls du Schwierigkeiten bei der Zahlung hast, teile mir das bitte
-      persönlich, telefonisch ({{phone_number}}) oder an die oben genannte
+      persönlich, telefonisch ({{ phone_number }}) oder an die oben genannte
       CC-E-Mail mit.
     </div>
 
@@ -97,8 +97,7 @@
 
     <div class="block" style="font-size: 12px; color: #777777; margin-top: 30px;">
       Diese E-Mail wurde automatisch erstellt. Bitte nicht darauf antworten.<br />
-      Sie enthält den aktuellen Stand vom {{generated_at}}.
+      Sie enthält den aktuellen Stand vom {{ generated_at }}.
     </div>
   </body>
 </html>
-

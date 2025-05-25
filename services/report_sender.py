@@ -1,101 +1,120 @@
 import os
-from datetime import datetime
 import smtplib
+import logging
+import re
+from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from dotenv import load_dotenv
-
+from jinja2 import Template
 from models.member import Member
 
-load_dotenv()
-
-SMTP_SERVER = "smtp.gmail.com"
-SMTP_PORT = 465
-EMAIL_SENDER = os.getenv("EMAIL_ADDRESS")
-EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
-PHONE_NUMBER = os.getenv("PHONE_NUMBER")
-
-# Path to the email template file used to generate personalized reports
-TEMPLATE_PATH = os.path.join("config", "emails", "balance_report.html")
+logger = logging.getLogger(__name__)
+EMAIL_REGEX = re.compile(r"[^@]+@[^@]+\.[^@]+")
 
 
-def send_report_email(member: Member):
+def format_transaction_rows(transactions) -> str:
     """
-    Sends an HTML email with the member's transaction report.
-    """
-    html = format_member_email(member)
+    Format a list of transactions into HTML table rows.
 
-    today_str = datetime.today().strftime("%d.%m.%Y")
+    Args:
+        transactions (List[Transaction]): List of transaction objects.
+
+    Returns:
+        str: HTML string with one <tr> per transaction.
+    """
+    rows = []
+    for tx in sorted(transactions, key=lambda t: t.date):
+        date_str = tx.date.strftime("%d.%m.%y")
+        amount_str = f"{tx.amount:.2f}".replace(".", ",") + " €"
+        rows.append(
+            f"<tr><td>{date_str}</td><td>{amount_str}</td><td>{tx.description}</td></tr>"
+        )
+    return "\n".join(rows)
+
+
+def format_member_email(member: Member, phone_number: str, template_path: str) -> str:
+    """
+    Generates an HTML email body for the given member using a Jinja2 template.
+
+    Args:
+        member (Member): The member to generate the report for.
+        phone_number (str): Phone number to include in the email.
+        template_path (str): Path to the Jinja2-compatible HTML template.
+
+    Returns:
+        str: HTML-formatted email body.
+
+    Raises:
+        FileNotFoundError: If the template file doesn't exist.
+    """
+    if not os.path.exists(template_path):
+        raise FileNotFoundError(f"Email template not found at {template_path}")
+
+    with open(template_path, "r", encoding="utf-8") as f:
+        template = Template(f.read())
+
+    return template.render(
+        title=member.title,
+        last_name=member.last_name,
+        phone_number=phone_number or "",
+        balance=f"{member.get_balance():.2f}".replace(".", ",") + " €",
+        generated_at=datetime.now().strftime("%d.%m.%Y %H:%M"),
+        transactions=format_transaction_rows(member.get_transactions()),
+    )
+
+
+def send_report_email(
+    member: Member,
+    sender_email: str,
+    sender_password: str,
+    phone_number: str,
+    template_path: str,
+    smtp_server: str = "smtp.gmail.com",
+    smtp_port: int = 465,
+    dry_run: bool = False,
+) -> bool:
+    """
+    Sends a balance report email to a member, using a rendered HTML template.
+
+    Args:
+        member (Member): The member to whom the email is sent.
+        sender_email (str): Email of the sender.
+        sender_password (str): Password (or app-specific) for SMTP login.
+        phone_number (str): Phone number of sender (e.g. treasurer).
+        template_path (str): Path to the email template (Jinja2 format).
+        smtp_server (str): Hostname of the SMTP server.
+        smtp_port (int): Port for SSL connection.
+        dry_run (bool): If True, simulate sending without actually sending email.
+
+    Returns:
+        bool: True if email was sent successfully or simulated; False otherwise.
+
+    Raises:
+        ValueError: If the member email is invalid.
+        RuntimeError: If sending the email fails.
+    """
+    if not EMAIL_REGEX.match(member.email):
+        raise ValueError(f"Invalid email address: {member.email}")
+
+    html = format_member_email(member, phone_number, template_path)
+    subject = f"Kontostand vom {datetime.today().strftime('%d.%m.%Y')}"
 
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"Kontostand vom {today_str}"
-    msg["From"] = EMAIL_SENDER
+    msg["Subject"] = subject
+    msg["From"] = sender_email
     msg["To"] = member.email
     msg.attach(MIMEText(html, "html"))
 
-    with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as server:
-        server.login(EMAIL_SENDER, EMAIL_PASSWORD)
-        server.sendmail(EMAIL_SENDER, member.email, msg.as_string())
+    if dry_run:
+        logger.info(f"[DRY-RUN] Would send email to {member.email}")
+        return False
 
-
-def format_member_email(member: Member) -> str:
-    """
-    Generate a personalized HTML email report for a member by filling a template
-    with their transaction data, balance, name, and title.
-
-    The function loads an HTML file from the config folder that includes placeholders:
-    - {{transactions}} — the table rows
-    - {{balance}} — the current account balance
-    - {{title}} — member's title (e.g., CB)
-    - {{last_name}} — member's last name
-    - {{phone_number}}  — kassenwart's phone number
-
-    Returns:
-        str: A fully formatted HTML email body ready to send.
-    """
-
-    # Load the HTML template from file
-    if not os.path.exists(TEMPLATE_PATH):
-        raise FileNotFoundError(f"Email template not found at {TEMPLATE_PATH}")
-
-    with open(TEMPLATE_PATH, "r", encoding="utf-8") as f:
-        template: str = f.read()
-
-    # Sort the member's transactions by date (ascending)
-    sorted_tx = sorted(member.transactions, key=lambda t: t["date"])
-
-    # Create HTML table rows
-    transaction_rows = []
-    for tx in sorted_tx:
-        # Format the transaction date as "dd.mm.yy"
-        date_obj = datetime.strptime(tx["date"], "%Y-%m-%d")
-        date_formatted = date_obj.strftime("%d.%m.%y")
-
-        # Format amount using European comma format and add € symbol
-        amount = f'{tx["amount"]:.2f}'.replace(".", ",") + " €"
-
-        # Prepare the transaction description
-        description = tx["description"]
-
-        # Add table row (<tr>)
-        row = f"<tr><td>{date_formatted}</td><td>{amount}</td><td>{description}</td></tr>"
-        transaction_rows.append(row)
-
-    # Join all rows into a single string
-    transactions_html = "\n".join(transaction_rows)
-
-    # Format final balance string
-    balance_str = f'{member.balance:.2f}'.replace(".", ",") + " €"
-
-    # Replace all placeholders in the template
-    filled = template.replace("{{transactions}}", transactions_html)
-    filled = filled.replace("{{balance}}", balance_str)
-    filled = filled.replace("{{title}}", member.title)
-    filled = filled.replace("{{last_name}}", member.last_name)
-    filled = filled.replace("{{phone_number}}", PHONE_NUMBER)
-
-    # Add current timestamp
-    generated_at = datetime.now().strftime("%d.%m.%Y %H:%M")
-    filled = filled.replace("{{generated_at}}", generated_at)
-
-    return filled
+    try:
+        with smtplib.SMTP_SSL(smtp_server, smtp_port) as server:
+            server.login(sender_email, sender_password)
+            server.sendmail(sender_email, member.email, msg.as_string())
+        logger.info(f"Email successfully sent to {member.email}")
+        return True
+    except smtplib.SMTPException as e:
+        logger.error(f"SMTP error while sending to {member.email}: {e}")
+        raise RuntimeError(f"Failed to send email: {e}")

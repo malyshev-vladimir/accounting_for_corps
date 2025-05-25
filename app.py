@@ -6,6 +6,7 @@ from werkzeug.utils import secure_filename
 from flask import Flask, render_template, request, redirect, url_for, jsonify
 from decimal import Decimal, InvalidOperation
 from datetime import date, datetime
+from dotenv import load_dotenv
 
 from models.transaction import Transaction
 from models.member import Member, Title
@@ -20,6 +21,12 @@ from services.settings_loader import get_admin_email, get_monthly_payment_for_re
 from services.monthly_payments import get_missing_monthly_payment_transactions
 from services.transactions_db import load_transactions_by_email, load_transaction_by_id, load_transactions_by_type
 from services.beverage_loader import load_beverage_assortment
+
+load_dotenv()
+EMAIL_SENDER = os.getenv("EMAIL_ADDRESS")
+EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
+PHONE_NUMBER = os.getenv("PHONE_NUMBER")
+TEMPLATE_PATH = "config/emails/balance_report.html"
 
 # Initialize the Flask application
 app = Flask(__name__)
@@ -594,7 +601,13 @@ def send_report():
 
     # Generate and send the email report
     try:
-        send_report_email(member)
+        send_report_email(
+            member,
+            sender_email=EMAIL_SENDER,
+            sender_password=EMAIL_PASSWORD,
+            phone_number=PHONE_NUMBER,
+            template_path=TEMPLATE_PATH
+        )
         return jsonify({"success": True}), 200
     except Exception as e:
         logging.error(f"[!] Fehler beim Senden an {email}: {e}")
