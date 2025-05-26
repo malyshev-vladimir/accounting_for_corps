@@ -190,7 +190,7 @@ def admin_add_member():
     POST: Validate and save the new member to the database.
     """
     if request.method == 'POST':
-        email = request.form.get("email", "").strip()
+        email = request.form.get("email", "").strip().lower()
         last_name = request.form.get("last_name", "").strip()
         first_name = request.form.get("first_name", "").strip()
         title = request.form.get("title", "F").strip()

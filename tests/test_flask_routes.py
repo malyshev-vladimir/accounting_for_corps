@@ -258,6 +258,67 @@ def test_add_member_success(client):
         mock_instance.save_to_db.assert_called_once()
 
 
+def test_add_member_email_normalization(client):
+    with patch("app.load_member_by_email", side_effect=ValueError("Not found")), \
+            patch("app.Member") as MockMember:
+        mock_instance = MagicMock()
+        MockMember.return_value = mock_instance
+
+        response = client.post("/admin/add_member", data={
+            "email": "  TestUser@Example.COM  ",
+            "last_name": "Tester",
+            "first_name": "Max",
+            "title": "CB",
+            "is_resident": "on",
+            "start_balance": "25.00"
+        })
+
+        assert response.status_code == 302
+        args, kwargs = MockMember.call_args
+        normalized_email = kwargs["email"]
+        assert normalized_email == "testuser@example.com"
+
+
+def test_add_member_not_resident_by_default(client):
+    with patch("app.load_member_by_email", side_effect=ValueError("Not found")), \
+            patch("app.Member") as MockMember:
+        mock_instance = MagicMock()
+        MockMember.return_value = mock_instance
+
+        response = client.post("/admin/add_member", data={
+            "email": "nobody@example.com",
+            "last_name": "No",
+            "first_name": "Body",
+            "title": "F",
+            "start_balance": "0.00"
+            # "is_resident" is missing
+        })
+
+        assert response.status_code == 302
+        _, kwargs = MockMember.call_args
+        assert kwargs["is_resident"] is False
+
+
+def test_add_member_balance_with_comma(client):
+    with patch("app.load_member_by_email", side_effect=ValueError("Not found")), \
+            patch("app.Member") as MockMember:
+        mock_instance = MagicMock()
+        MockMember.return_value = mock_instance
+
+        response = client.post("/admin/add_member", data={
+            "email": "comma@example.com",
+            "last_name": "Comma",
+            "first_name": "User",
+            "title": "F",
+            "is_resident": "on",
+            "start_balance": "12,50"
+        })
+
+        assert response.status_code == 302
+        _, kwargs = MockMember.call_args
+        assert kwargs["start_balance"] == Decimal("12.50")
+
+
 def test_add_member_already_exists(client):
     with patch("app.load_member_by_email", return_value=MagicMock()):
         response = client.post("/admin/add_member", data={
