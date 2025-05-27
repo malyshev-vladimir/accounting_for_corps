@@ -1,3 +1,11 @@
+let sortDescending = true;
+let currentTransactionData = [];
+
+function parseDateString(dateStr) {
+    const [dd, mm, yyyy] = dateStr.split(".");
+    return new Date(`${yyyy}-${mm}-${dd}`);
+}
+
 function updateDescriptionAndExtras() {
     const type = document.getElementById("type").value;
     const extra = document.getElementById("extra-fields");
@@ -110,28 +118,44 @@ function updateDescriptionAndExtras() {
     }
 }
 
+function renderTransactions(data, email) {
+    const tbody = document.getElementById("transaction-body");
+    tbody.innerHTML = "";
+
+    data.sort((a, b) => {
+        const dateA = parseDateString(a.date);
+        const dateB = parseDateString(b.date);
+
+        const timeA = isNaN(dateA.getTime()) ? 0 : dateA.getTime();
+        const timeB = isNaN(dateB.getTime()) ? 0 : dateB.getTime();
+
+        return sortDescending ? timeB - timeA : timeA - timeB;
+    });
+
+    data.forEach((tx) => {
+        if (!tx.id) return;
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td style="width: 90px;">${tx.date}</td>
+            <td class="text-center">${tx.amount}</td>
+            <td>${tx.description}</td>
+            <td>
+                <a href="#" class="text-decoration-none text-danger" title="Löschen"
+                   onclick="deleteTransaction('${email}', ${tx.id}, this); return false;">
+                    <i class="bi bi-trash"></i>
+                </a>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
 function loadTransactions(email) {
     fetch(`/admin/get_transactions?email=${encodeURIComponent(email)}`)
         .then(res => res.json())
         .then(data => {
-            const tbody = document.getElementById("transaction-body");
-            tbody.innerHTML = "";
-            data.forEach((tx) => {
-                if (!tx.id) return;
-                const tr = document.createElement("tr");
-                tr.innerHTML = `
-                    <td style="width: 90px;">${tx.date}</td>
-                    <td class="text-center">${tx.amount}</td>
-                    <td>${tx.description}</td>
-                    <td>
-                        <a href="#" class="text-decoration-none text-danger" title="Löschen"
-                           onclick="deleteTransaction('${email}', ${tx.id}, this); return false;">
-                            <i class="bi bi-trash"></i>
-                        </a>
-                    </td>
-                `;
-                tbody.appendChild(tr);
-            });
+            currentTransactionData = data;
+            renderTransactions(data, email);
         });
 }
 
@@ -153,11 +177,24 @@ function deleteTransaction(email, transactionId) {
 
 document.addEventListener("DOMContentLoaded", () => {
     updateDescriptionAndExtras();
+
     const emailSelect = document.querySelector('select[name="email"]');
     if (emailSelect) {
         loadTransactions(emailSelect.value);
         emailSelect.addEventListener("change", () => {
             loadTransactions(emailSelect.value);
+        });
+    }
+
+    const sortHeader = document.getElementById("sort-date-header");
+    const sortArrow = document.getElementById("sort-arrow");
+
+    if (sortHeader) {
+        sortHeader.addEventListener("click", () => {
+            sortDescending = !sortDescending;
+            sortArrow.textContent = sortDescending ? "▼" : "▲";
+            const email = document.querySelector('select[name="email"]').value;
+            renderTransactions(currentTransactionData, email);
         });
     }
 });
