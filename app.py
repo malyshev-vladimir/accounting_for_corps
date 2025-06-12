@@ -174,11 +174,27 @@ def admin_panel():
     except Exception as e:
         return f"[!] Error loading members: {e}", 500
 
-    # Sort members by creation date (newest first)
-    sorted_members = sorted(members, key=lambda member: member.created_at, reverse=True)
+    # Sort members by: balance (default), name, email or created_at
+    sort_by = request.args.get("sort_by", "balance")  # default: balance
+    order = request.args.get("order", "asc")
+
+    reverse = (order == "desc")
+
+    def sort_key(m):
+        if sort_by == "name":
+            return m.last_name.lower()
+        elif sort_by == "email":
+            return m.email.lower()
+        elif sort_by == "created_at":
+            return m.created_at
+        elif sort_by == "balance":
+            return m.get_balance()
+        return m.get_balance()  # fallback
+
+    sorted_members = sorted(members, key=sort_key, reverse=reverse)
 
     # Render the admin member list
-    return render_template("admin_members.html", members=sorted_members)
+    return render_template("admin_members.html", members=sorted_members, sort_by=sort_by, order=order)
 
 
 @app.route('/admin/add_member', methods=['GET', 'POST'])

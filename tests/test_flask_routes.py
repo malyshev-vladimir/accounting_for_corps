@@ -231,6 +231,74 @@ def test_admin_panel_error(client):
         assert b"error loading members" in response.data.lower()
 
 
+@pytest.fixture
+def mock_sorted_members():
+    from models.member import Member
+    m1 = MagicMock(spec=Member)
+    m1.last_name = "Ziegler"
+    m1.email = "ziegler@example.com"
+    m1.created_at = "2023-05-01"
+    m1.get_balance.return_value = Decimal("-100.00")
+
+    m2 = MagicMock(spec=Member)
+    m2.last_name = "Albrecht"
+    m2.email = "albrecht@example.com"
+    m2.created_at = "2023-04-01"
+    m2.get_balance.return_value = Decimal("0.00")
+
+    m3 = MagicMock(spec=Member)
+    m3.last_name = "Berger"
+    m3.email = "berger@example.com"
+    m3.created_at = "2023-06-01"
+    m3.get_balance.return_value = Decimal("-50.00")
+
+    return [m1, m2, m3]
+
+
+def test_admin_sort_by_balance_asc(client, mock_sorted_members):
+    with patch("app.load_all_members", return_value=mock_sorted_members):
+        response = client.get("/admin?sort_by=balance&order=asc")
+        assert response.status_code == 200
+        html = response.get_data(as_text=True)
+        pos_ziegler = html.find("ziegler@example.com")
+        pos_berger = html.find("berger@example.com")
+        pos_albrecht = html.find("albrecht@example.com")
+        assert pos_ziegler < pos_berger < pos_albrecht
+
+
+def test_admin_sort_by_name_desc(client, mock_sorted_members):
+    with patch("app.load_all_members", return_value=mock_sorted_members):
+        response = client.get("/admin?sort_by=name&order=desc")
+        assert response.status_code == 200
+        html = response.get_data(as_text=True)
+        pos_ziegler = html.find("ziegler@example.com")
+        pos_berger = html.find("berger@example.com")
+        pos_albrecht = html.find("albrecht@example.com")
+        assert pos_ziegler < pos_berger < pos_albrecht
+
+
+def test_admin_sort_by_created_at_asc(client, mock_sorted_members):
+    with patch("app.load_all_members", return_value=mock_sorted_members):
+        response = client.get("/admin?sort_by=created_at&order=asc")
+        assert response.status_code == 200
+        html = response.get_data(as_text=True)
+        pos_albrecht = html.find("albrecht@example.com")
+        pos_ziegler = html.find("ziegler@example.com")
+        pos_berger = html.find("berger@example.com")
+        assert pos_albrecht < pos_ziegler < pos_berger
+
+
+def test_admin_sort_default(client, mock_sorted_members):
+    with patch("app.load_all_members", return_value=mock_sorted_members):
+        response = client.get("/admin")
+        assert response.status_code == 200
+        html = response.get_data(as_text=True)
+        pos_ziegler = html.find("ziegler@example.com")
+        pos_berger = html.find("berger@example.com")
+        pos_albrecht = html.find("albrecht@example.com")
+        assert pos_ziegler < pos_berger < pos_albrecht
+
+
 # ROUTE: GET, POST /admin/add_member
 
 def test_add_member_get_form(client):
