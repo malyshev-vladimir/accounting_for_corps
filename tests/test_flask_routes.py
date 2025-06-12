@@ -1,10 +1,12 @@
+import datetime
 import re
 from pathlib import Path
 
 import pytest
 from app import app
 from decimal import Decimal
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+from models.member import Member
 from io import BytesIO
 
 
@@ -233,7 +235,6 @@ def test_admin_panel_error(client):
 
 @pytest.fixture
 def mock_sorted_members():
-    from models.member import Member
     m1 = MagicMock(spec=Member)
     m1.last_name = "Ziegler"
     m1.email = "ziegler@example.com"
@@ -495,8 +496,6 @@ def test_save_missing_payments_missing_field(client):
         assert response.json["saved"] == 0
 
 
-# ROUTE: POST /admin/save_missing_payments
-
 def test_save_missing_payments(client):
     with patch("app.Transaction") as MockTransaction, \
             patch("app.get_admin_email", return_value="admin@example.com"):
@@ -514,6 +513,71 @@ def test_save_missing_payments(client):
         assert response.json["success"] is True
         assert response.json["saved"] == 1
         mock_tx.save.assert_called_once()
+
+
+@pytest.mark.parametrize("invalid_date", ["not-a-date", "2025/05/01", "May 1, 2025"])
+def test_save_missing_payments_invalid_date_format(client, invalid_date):
+    """Ensure that transactions with invalid date formats are skipped"""
+    response = client.post("/admin/save_missing_payments", json={
+        "transactions": [
+            {"email": "test@example.com", "date": invalid_date, "amount": "15.00"}
+        ]
+    })
+    assert response.status_code == 200
+    assert response.json["success"] is True
+    assert response.json["saved"] == 0
+
+
+def test_save_missing_payments_partial_failure(client):
+    """Test that if one of multiple transactions fails, others are still saved"""
+    with patch("app.Transaction") as MockTransaction, \
+            patch("app.get_admin_email", return_value="admin@example.com"):
+        # First and third succeed, second raises exception inside Transaction()
+        valid_tx = MagicMock()
+        MockTransaction.side_effect = [valid_tx, Exception("fail"), valid_tx]
+
+        response = client.post("/admin/save_missing_payments", json={
+            "transactions": [
+                {"email": "one@example.com", "date": "2025-05-01", "amount": "15.00"},
+                {"email": "bad@example.com", "date": "2025-05-02", "amount": "15.00"},
+                {"email": "two@example.com", "date": "2025-05-01", "amount": "15.00"},
+            ]
+        })
+
+        assert response.status_code == 200
+        assert response.json["success"] is True
+        assert response.json["saved"] == 2
+
+
+def test_check_missing_payments_html_contains_expected_fields(client):
+    from models.member import Member
+    mock_member = MagicMock(spec=Member)
+    mock_member.email = "test@example.com"
+    mock_member.first_name = "Test"
+    mock_member.last_name = "User"
+    mock_member.title = "F"
+    mock_member.is_resident = True
+    mock_member.created_at = "2023-01-01"
+    mock_member.get_balance.return_value = 0
+    mock_member.get_transactions.return_value = []
+
+    mock_missing_tx = MagicMock()
+    mock_missing_tx.date = datetime.date(2025, 5, 1)
+    mock_missing_tx.amount = Decimal("15.00")
+
+    with patch("app.load_all_members", return_value=[mock_member]), \
+            patch("app.get_monthly_payment_for_residents", return_value=Decimal("15.00")), \
+            patch("app.get_monthly_payment_for_non_residents", return_value=Decimal("12.50")), \
+            patch("app.get_missing_monthly_payment_transactions", return_value=[mock_missing_tx]), \
+            patch("app.load_transactions_by_type", return_value=[]):
+        response = client.get("/admin/check_monthly_payments")
+        html = response.get_data(as_text=True)
+
+        assert response.status_code == 200
+        assert "Test" in html
+        assert "User" in html
+        assert "15.00" in html
+        assert "Fehlende Aktivenbeiträge" in html
 
 
 # ROUTE: GET /admin/add_transaction

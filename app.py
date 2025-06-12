@@ -1,13 +1,16 @@
+# --- Standard library ---
 import logging
 import os
 import uuid
-
-from werkzeug.utils import secure_filename
-from flask import Flask, render_template, request, redirect, url_for, jsonify
 from decimal import Decimal, InvalidOperation
 from datetime import date, datetime
+
+# --- Third-party libraries ---
+from flask import Flask, render_template, request, redirect, url_for, jsonify
+from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 
+# --- Local modules ---
 from models.transaction import Transaction
 from models.member import Member, Title
 from models.transaction_type import TransactionType
@@ -16,13 +19,21 @@ from services.logging_db import log_transaction_change, log_title_change, log_re
 from services.members_db import load_member_by_email, load_all_members
 from services.reimbursements_db import save_reimbursement_items, update_bank_details
 from services.report_sender import send_report_email
-from services.settings_loader import get_admin_email, get_monthly_payment_for_residents, \
+from services.settings_loader import (
+    get_admin_email,
+    get_monthly_payment_for_residents,
     get_monthly_payment_for_non_residents
+)
 from services.monthly_payments import get_missing_monthly_payment_transactions
-from services.transactions_db import load_transactions_by_email, load_transaction_by_id, load_transactions_by_type
+from services.transactions_db import (
+    load_transactions_by_email,
+    load_transaction_by_id,
+    load_transactions_by_type
+)
 from services.beverage_loader import load_beverage_assortment
-
 load_dotenv()
+
+
 EMAIL_SENDER = os.getenv("EMAIL_ADDRESS")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
 PHONE_NUMBER = os.getenv("PHONE_NUMBER")

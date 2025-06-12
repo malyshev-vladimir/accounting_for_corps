@@ -33,15 +33,15 @@
                             <td>{{ tx.date.strftime("%B %Y") }}</td>
                             <td>
                                 <select class="form-select form-select-sm amount-select" style="text-align: center;">
-                                    <option value="{{ resident_fee }}"
-                                            {% if tx.amount== neg_res_fee %}selected{% endif %}
-                                            style="text-align: center;">
-                                        {{ "%.2f"|format(resident_fee  * -1) }} €
+                                    <option value="15.00"
+                                            {% if block.member.title !="AH" and block.member.is_resident %}selected{%
+                                            endif %}>
+                                        15.00 €
                                     </option>
-                                    <option value="{{ non_resident_fee }}"
-                                            {% if tx.amount== neg_nonres_fee %}selected{% endif %}
-                                            style="text-align: center;">
-                                        {{ "%.2f"|format(non_resident_fee * -1) }} €
+                                    <option value="12.50"
+                                            {% if block.member.title !="AH" and not block.member.is_resident
+                                            %}selected{% endif %}>
+                                        12.50 €
                                     </option>
                                 </select>
                             </td>
@@ -67,6 +67,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/missing_payments.js') }}"></script>
-<script src="{{ url_for('static', filename='js/section_toggle.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/missing_payments/init.js') }}"></script>
 {% endblock %}
