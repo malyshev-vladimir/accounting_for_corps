@@ -1,0 +1,50 @@
+{% extends "admin_base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2 class="mb-4">Statistik</h2>
+
+    {% if rows %}
+    <div class="table-responsive">
+        <table class="table table-striped table-bordered align-middle">
+            <thead class="table-dark text-center">
+            <tr>
+                <th>Name</th>
+                <th>Aktueller Stand (€)</th>
+                <th class="text-center">
+                    <form method="get" id="dateForm" class="d-flex justify-content-center align-items-center gap-1 m-0">
+                        <label for="date" class="form-label mb-0">Stand am </label>
+                        <input type="text"
+                               id="date"
+                               name="date"
+                               class="form-control form-control-sm flatpickr"
+                               style="width: 88px;"
+                               value="{{ selected_date.strftime('%d.%m.%Y') }}">
+                        <span> (€)</span>
+                    </form>
+                </th>
+                <th>Letzte Gutschrift</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for row in rows %}
+            <tr class="text-center">
+                <td class="text-start">{{ row.name }}</td>
+                <td class="text-danger">{{ row.current_debt }}</td>
+                <td class="text-danger">{{ row.debt_on_date }}</td>
+                <td>{{ row.last_topup }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="text-muted">Keine Mitglieder mit Schulden über 100 € gefunden.</p>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="{{ url_for('static', filename='js/flatpickr_init.js') }}"></script>
+{% endblock %}

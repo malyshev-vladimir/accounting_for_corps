@@ -1,10 +1,13 @@
+from __future__ import annotations
+
 from datetime import datetime, date
 from decimal import Decimal
 from enum import Enum
-from typing import List
+from typing import List, Optional
 
 from db import get_cursor
 from models.transaction import Transaction
+from models.transaction_type import TransactionType
 from models.validators import parse_decimal
 from services.transactions_db import load_transactions_by_email
 
@@ -41,7 +44,7 @@ class Member:
             email (str): Unique identifier and contact email of the member.
             last_name (str): Last name of the member.
             first_name (str): First name of the member (default: "").
-            title (str): Current title/status of the member default: "F").
+            title (str): Current title/status of the member (default: "F").
             is_resident (bool): Whether the member lives in the community house (default: True).
             created_at (date): Creating date of the member (default: today)
             start_balance (Decimal): Starting account balance (default: 0.00).
@@ -64,18 +67,40 @@ class Member:
         """
         return load_transactions_by_email(self.email)
 
-    def get_balance(self) -> Decimal:
+    def get_balance_at(self, target_date: date) -> Decimal:
         """
-        Return the current account balance by summing all transactions up to today.
+        Calculate the member's account balance as of the given date (inclusive).
+
+        Args:
+            target_date (date): The date up to which transactions are considered.
 
         Returns:
-            Decimal: Starting balance plus all transaction amounts.
+            Decimal: The account balance on the specified date.
         """
-        total = Decimal(self.start_balance)
+        balance = Decimal(self.start_balance)
         for tx in self.get_transactions():
-            if tx.date <= date.today():
-                total += tx.amount
-        return total
+            if tx.date <= target_date:
+                balance += tx.amount
+        return balance
+
+    def get_balance(self) -> Decimal:
+
+        """
+        Return the current account balance as of today.
+
+        Returns:
+            Decimal: Balance calculated with all transactions up to today.
+        """
+        return self.get_balance_at(date.today())
+
+    def get_title(self) -> str:
+        """
+        Return the member's current title as a short string.
+
+        Returns:
+            str: Titles such as "F", "CB", "iaCB", or "AH".
+        """
+        return self.title.value if isinstance(self.title, Title) else self.title
 
     def change_title(self, new_title: str, changed_by: str = None) -> None:
         """
@@ -98,16 +123,16 @@ class Member:
         # Update the title in the database
         with get_cursor() as cur:
             cur.execute("""
-                    UPDATE members
-                    SET title = %s
-                    WHERE email = %s
-                """, (new_title, self.email))
+                        UPDATE members
+                        SET title = %s
+                        WHERE email = %s
+                        """, (new_title, self.email))
 
             # Log the title change
             cur.execute("""
-                    INSERT INTO title_changes (member_email, changed_at, new_title, changed_by)
-                    VALUES (%s, %s, %s, %s)
-                """, (self.email, datetime.now(), new_title, changed_by))
+                        INSERT INTO title_changes (member_email, changed_at, new_title, changed_by)
+                        VALUES (%s, %s, %s, %s)
+                        """, (self.email, datetime.now(), new_title, changed_by))
 
     def change_residency(self, new_resident: bool, changed_by: str = None) -> None:
         """
@@ -124,18 +149,18 @@ class Member:
         now = datetime.now()
 
         with get_cursor() as cur:
-            # Update current value in the members table
+            # Update current value in the member table
             cur.execute("""
-                UPDATE members
-                SET is_resident = %s
-                WHERE email = %s
-            """, (new_resident, self.email))
+                        UPDATE members
+                        SET is_resident = %s
+                        WHERE email = %s
+                        """, (new_resident, self.email))
 
             # Log the change in residency_changes
             cur.execute("""
-                INSERT INTO residency_changes (member_email, changed_at, new_resident, changed_by)
-                VALUES (%s, %s, %s, %s)
-            """, (self.email, now, new_resident, changed_by))
+                        INSERT INTO residency_changes (member_email, changed_at, new_resident, changed_by)
+                        VALUES (%s, %s, %s, %s)
+                        """, (self.email, now, new_resident, changed_by))
 
     def create_transaction(self,
                            transaction_date: date,
@@ -177,25 +202,24 @@ class Member:
         with get_cursor() as cur:
             # Try to insert or update the member
             cur.execute("""
-                INSERT INTO members (
-                    email, first_name, last_name, title, is_resident, created_at, start_balance
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (email) DO UPDATE SET
-                    first_name = EXCLUDED.first_name,
-                    last_name = EXCLUDED.last_name,
-                    title = EXCLUDED.title,
-                    is_resident = EXCLUDED.is_resident,
-                    start_balance = EXCLUDED.start_balance
-                    -- created_at intentionally not updated to preserve original creation time
-            """, (
-                self.email,
-                self.first_name,
-                self.last_name,
-                self.title,
-                self.is_resident,
-                self.created_at,
-                float(self.start_balance)
-            ))
+                        INSERT INTO members (email, first_name, last_name, title, is_resident, created_at,
+                                             start_balance)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (email) DO UPDATE SET first_name    = EXCLUDED.first_name,
+                                                          last_name     = EXCLUDED.last_name,
+                                                          title         = EXCLUDED.title,
+                                                          is_resident   = EXCLUDED.is_resident,
+                                                          start_balance = EXCLUDED.start_balance
+                        -- created_at intentionally not updated to preserve original creation time
+                        """, (
+                            self.email,
+                            self.first_name,
+                            self.last_name,
+                            self.title,
+                            self.is_resident,
+                            self.created_at,
+                            float(self.start_balance)
+                        ))
 
             # Check if it's a new member by querying title_changes
             cur.execute("SELECT 1 FROM title_changes WHERE member_email = %s LIMIT 1", (self.email,))
@@ -204,14 +228,14 @@ class Member:
             if not title_exists:
                 # Save initial title history
                 cur.execute("""
-                    INSERT INTO title_changes (member_email, changed_at, new_title, changed_by)
-                    VALUES (%s, %s, %s, %s)
-                """, (
-                    self.email,
-                    datetime.now(),
-                    self.title,
-                    self.email  # assuming self.email is the one creating their own record
-                ))
+                            INSERT INTO title_changes (member_email, changed_at, new_title, changed_by)
+                            VALUES (%s, %s, %s, %s)
+                            """, (
+                                self.email,
+                                datetime.now(),
+                                self.title,
+                                self.email  # assuming self.email is the one creating their own record
+                            ))
 
             # Check if it's a new member by querying residency_changes
             cur.execute("SELECT 1 FROM residency_changes WHERE member_email = %s LIMIT 1", (self.email,))
@@ -220,11 +244,26 @@ class Member:
             if not residency_exists:
                 # Save initial residency status
                 cur.execute("""
-                    INSERT INTO residency_changes (member_email, changed_at, new_resident, changed_by)
-                    VALUES (%s, %s, %s, %s)
-                """, (
-                    self.email,
-                    datetime.now(),
-                    self.is_resident,
-                    self.email
-                ))
+                            INSERT INTO residency_changes (member_email, changed_at, new_resident, changed_by)
+                            VALUES (%s, %s, %s, %s)
+                            """, (
+                                self.email,
+                                datetime.now(),
+                                self.is_resident,
+                                self.email
+                            ))
+
+    def get_last_credit_date(self) -> Optional[date]:
+        """
+        Return the date of the last transaction of type CREDIT (Gutschrift).
+
+        Returns:
+            Optional[date]: The most recent CREDIT transaction date, or None if none found.
+        """
+        credit_dates = [
+            tx.date
+            for tx in self.get_transactions()
+            if int(tx.type) == TransactionType.CREDIT.value
+        ]
+        return max(credit_dates) if credit_dates else None
+

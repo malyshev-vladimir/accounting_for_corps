@@ -151,7 +151,7 @@ def test_submit_reimbursement_all_entries_invalid(client):
 
 def test_submit_reimbursement_skips_incomplete_entries(client):
     with patch("app.save_reimbursement_items") as mock_save, \
-            patch("app.update_bank_details") as mock_update, \
+            patch("app.update_bank_details"), \
             patch("app.load_member_by_email") as mock_load:
         mock_member = MagicMock()
         mock_member.last_name = "Test"
@@ -298,6 +298,108 @@ def test_admin_sort_default(client, mock_sorted_members):
         pos_berger = html.find("berger@example.com")
         pos_albrecht = html.find("albrecht@example.com")
         assert pos_ziegler < pos_berger < pos_albrecht
+
+
+# ROUTE: GET /admin/statistics
+
+def test_admin_statistics_loads(client):
+    mock_member = MagicMock()
+    mock_member.get_balance.return_value = Decimal("-200.00")
+    mock_member.get_balance_at.return_value = Decimal("-150.00")
+    mock_member.get_last_credit_date.return_value = datetime.datetime(2025, 5, 1)
+    mock_member.last_name = "Schmidt"
+    mock_member.get_title.return_value = "CB"
+
+    with patch("app.load_all_members", return_value=[mock_member]):
+        response = client.get("/admin/statistics")
+        assert response.status_code == 200
+        html = response.get_data(as_text=True)
+
+        assert "Schmidt" in html
+        assert "CB Schmidt" in html
+        assert "200.00" in html or "-200.00" in html
+        assert "01.05.2025" in html
+        assert "Fehlbetrag" not in html
+
+
+def test_admin_statistics_ignores_small_debts(client):
+    mock_member = MagicMock()
+    mock_member.get_balance.return_value = Decimal("-50.00")
+    mock_member.get_balance_at.return_value = Decimal("-40.00")
+    mock_member.get_last_credit_date.return_value = datetime.datetime(2025, 4, 1)
+    mock_member.last_name = "Mild"
+    mock_member.get_title.return_value = "F"
+
+    with patch("app.load_all_members", return_value=[mock_member]):
+        response = client.get("/admin/statistics")
+        html = response.get_data(as_text=True)
+        assert "Mild" not in html
+
+
+def test_admin_statistics_handles_invalid_date(client):
+    with patch("app.load_all_members", return_value=[]):
+        response = client.get("/admin/statistics?date=invalid-date")
+        assert response.status_code == 200
+
+
+def test_admin_statistics_handles_missing_last_credit(client):
+    member = MagicMock()
+    member.get_balance.return_value = Decimal("-120.00")
+    member.get_balance_at.return_value = Decimal("-100.00")
+    member.get_last_credit_date.return_value = None
+    member.last_name = "NoTopup"
+    member.get_title.return_value = "CB"
+
+    with patch("app.load_all_members", return_value=[member]):
+        response = client.get("/admin/statistics")
+        html = response.get_data(as_text=True)
+        assert "–" in html
+
+
+def test_admin_statistics_respects_custom_date_param(client):
+    member = MagicMock()
+    member.get_balance.return_value = Decimal("-150.00")
+    member.get_balance_at.return_value = Decimal("-130.00")
+    member.get_last_credit_date.return_value = datetime.datetime(2025, 3, 10)
+    member.last_name = "Dated"
+    member.get_title.return_value = "CB"
+
+    with patch("app.load_all_members", return_value=[member]):
+        response = client.get("/admin/statistics?date=01.01.2024")
+        html = response.get_data(as_text=True)
+        assert response.status_code == 200
+        assert "Dated" in html
+        assert "10.03.2025" in html
+
+
+def test_admin_statistics_raises_on_db_failure(client):
+    with patch("app.load_all_members", side_effect=Exception("DB error")):
+        response = client.get("/admin/statistics")
+        assert response.status_code == 500
+        assert b"error" in response.data.lower()
+
+
+def test_admin_statistics_equal_debt_sorting(client):
+    m1 = MagicMock()
+    m1.last_name = "Alpha"
+    m1.get_title.return_value = "CB"
+    m1.get_balance.return_value = Decimal("-150.00")
+    m1.get_balance_at.return_value = Decimal("-140.00")
+    m1.get_last_credit_date.return_value = datetime.datetime(2025, 1, 1)
+
+    m2 = MagicMock()
+    m2.last_name = "Beta"
+    m2.get_title.return_value = "CB"
+    m2.get_balance.return_value = Decimal("-150.00")
+    m2.get_balance_at.return_value = Decimal("-140.00")
+    m2.get_last_credit_date.return_value = datetime.datetime(2025, 2, 1)
+
+    with patch("app.load_all_members", return_value=[m1, m2]):
+        response = client.get("/admin/statistics")
+        html = response.get_data(as_text=True)
+        pos_alpha = html.find("Alpha")
+        pos_beta = html.find("Beta")
+        assert pos_alpha < pos_beta or pos_beta < pos_alpha
 
 
 # ROUTE: GET, POST /admin/add_member
@@ -458,7 +560,7 @@ def test_check_all_missing_monthly_payments(client):
 # ROUTE: POST /admin/save_missing_payments
 
 def test_save_missing_payments_invalid_date(client):
-    with patch("app.Transaction") as MockTransaction, \
+    with patch("app.Transaction"), \
             patch("app.get_admin_email", return_value="admin@example.com"):
         response = client.post("/admin/save_missing_payments", json={
             "transactions": [{
@@ -473,7 +575,7 @@ def test_save_missing_payments_invalid_date(client):
 
 
 def test_save_missing_payments_invalid_amount(client):
-    with patch("app.Transaction") as MockTransaction, \
+    with patch("app.Transaction"), \
             patch("app.get_admin_email", return_value="admin@example.com"):
         response = client.post("/admin/save_missing_payments", json={
             "transactions": [{
@@ -488,7 +590,7 @@ def test_save_missing_payments_invalid_amount(client):
 
 
 def test_save_missing_payments_missing_field(client):
-    with patch("app.Transaction") as MockTransaction, \
+    with patch("app.Transaction"), \
             patch("app.get_admin_email", return_value="admin@example.com"):
         response = client.post("/admin/save_missing_payments", json={})
         assert response.status_code == 200
@@ -726,7 +828,7 @@ def test_update_member_status_missing_fields(client):
 
 def test_send_report_success(client):
     with patch("app.load_member_by_email") as mock_load, \
-            patch("app.send_report_email") as mock_send:
+            patch("app.send_report_email"):
         mock_load.return_value = MagicMock()
 
         response = client.post("/send_report", json={"email": "user@example.com"})
@@ -751,7 +853,7 @@ def test_send_report_send_error(client):
 # ROUTE: GET /admin/get_transactions
 
 def test_get_transactions(client):
-    with patch("app.load_transactions_by_email", return_value=[]) as mock_load:
+    with patch("app.load_transactions_by_email", return_value=[]):
         response = client.get("/admin/get_transactions?email=user@example.com")
         assert response.status_code == 200
         assert isinstance(response.json, list)

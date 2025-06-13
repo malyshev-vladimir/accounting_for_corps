@@ -31,8 +31,8 @@ from services.transactions_db import (
     load_transactions_by_type
 )
 from services.beverage_loader import load_beverage_assortment
-load_dotenv()
 
+load_dotenv()
 
 EMAIL_SENDER = os.getenv("EMAIL_ADDRESS")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
@@ -206,6 +206,61 @@ def admin_panel():
 
     # Render the admin member list
     return render_template("admin_members.html", members=sorted_members, sort_by=sort_by, order=order)
+
+
+@app.route("/admin/statistics", methods=["GET"])
+def admin_statistics():
+    """
+    Display the admin statistics page showing members with significant debts.
+
+    GET: Load all members, compute balances and last credit date,
+         and display those with debts greater than 100€.
+    """
+    # Get the selected date from query string or use today by default
+    date_str = request.args.get("date", datetime.today().strftime("%Y-%m-%d"))
+    try:
+        reference_date = datetime.strptime(date_str, "%d.%m.%Y").date()
+    except ValueError:
+        reference_date = date.today()
+
+    try:
+        members = load_all_members()
+    except Exception as e:
+        logging.error(f"[!] Error loading members for statistics: {e}")
+        return f"[!] Error loading members: {e}", 500
+
+    report_rows = []
+
+    for member in members:
+        current_balance = member.get_balance()
+
+        # Skip members with small or positive balances (only show large debts)
+        if current_balance >= -100:
+            continue
+
+        # Calculate balance as of the selected reference date
+        balance_on_date = member.get_balance_at(reference_date)
+
+        # Get date of last CREDIT-type transaction (Gutschrift)
+        last_credit_date = member.get_last_credit_date()
+        last_credit_str = last_credit_date.strftime("%d.%m.%Y") if last_credit_date else "–"
+
+        # Prepare row for the report
+        report_rows.append({
+            "name": f"{member.get_title()} {member.last_name}",
+            "current_debt": round(current_balance, 2),
+            "debt_on_date": round(balance_on_date, 2),
+            "last_topup": last_credit_str
+        })
+
+    # Sort rows by current debt (descending by magnitude)
+    report_rows.sort(key=lambda r: r["current_debt"])
+
+    return render_template(
+        "admin_statistics.html",
+        rows=report_rows,
+        selected_date=reference_date
+    )
 
 
 @app.route('/admin/add_member', methods=['GET', 'POST'])

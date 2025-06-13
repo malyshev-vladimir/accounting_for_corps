@@ -15,12 +15,26 @@ def test_create_member():
     assert m.start_balance == Decimal("10.00")
 
 
+def test_get_balance_at_excludes_future(monkeypatch, sample_member):
+    today = date.today()
+    monkeypatch.setattr(sample_member, "get_transactions", lambda: [
+        type("Tx", (), {"amount": Decimal("10.0"), "date": today}),
+        type("Tx", (), {"amount": Decimal("999.0"), "date": today.replace(year=today.year + 1)}),
+    ])
+    assert sample_member.get_balance_at(today) == Decimal("10.00")
+
+
 def test_get_balance_with_transactions(monkeypatch, sample_member):
     monkeypatch.setattr(sample_member, "get_transactions", lambda: [
         type("Tx", (), {"amount": Decimal("-10.0"), "date": date.today()}),
         type("Tx", (), {"amount": Decimal("5.0"), "date": date.today()}),
     ])
     assert sample_member.get_balance() == Decimal("-5.00")
+
+
+def test_get_title_enum(sample_member):
+    sample_member.title = Title.iaCB
+    assert sample_member.get_title() == "iaCB"
 
 
 def test_change_title_to(sample_member):
@@ -43,6 +57,15 @@ def test_change_title_to(sample_member):
     assert sample_member.title == Title.CB.value
 
 
+def test_change_title_no_change(sample_member):
+    sample_member.title = "CB"
+
+    with patch("models.member.get_cursor") as mock_cursor:
+        sample_member.change_title("CB", changed_by="admin@example.com")
+
+    mock_cursor.assert_not_called()
+
+
 def test_change_residency(sample_member):
     logs = []
 
@@ -63,6 +86,15 @@ def test_change_residency(sample_member):
     assert sample_member.is_resident is False
     assert any("update members" in q for q in logs)
     assert any("insert into residency_changes" in q for q in logs)
+
+
+def test_change_residency_no_change(sample_member):
+    sample_member.is_resident = True
+
+    with patch("models.member.get_cursor") as mock_cursor:
+        sample_member.change_residency(True, changed_by="admin@example.com")
+
+    mock_cursor.assert_not_called()
 
 
 def test_create_transaction(sample_member):
@@ -107,3 +139,47 @@ def test_save_to_db_insert(sample_member):
     assert any("insert into members" in q for q in logs)
     assert any("insert into title_changes" in q for q in logs)
     assert any("insert into residency_changes" in q for q in logs)
+
+
+def test_save_to_db_update_existing(sample_member):
+    logs = []
+
+    class FakeCursor:
+        def __init__(self):
+            self.calls = 0
+
+        def execute(self, query, params=None):
+            logs.append(query.lower().strip())
+
+        def fetchone(self):
+            self.calls += 1
+            return True
+
+        def __enter__(self): return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb): pass
+
+    with patch("models.member.get_cursor", return_value=FakeCursor()):
+        sample_member.save_to_db()
+
+    assert any("insert into members" in q for q in logs)
+    assert not any("insert into title_changes" in q for q in logs)
+    assert not any("insert into residency_changes" in q for q in logs)
+
+
+def test_get_last_credit_date(monkeypatch, sample_member):
+    today = date.today()
+    monkeypatch.setattr(sample_member, "get_transactions", lambda: [
+        type("Tx", (), {"type": 3, "date": today.replace(year=2023)}),
+        type("Tx", (), {"type": 3, "date": today.replace(year=2024)}),
+        type("Tx", (), {"type": 1, "date": today.replace(year=2025)}),
+    ])
+    assert sample_member.get_last_credit_date() == today.replace(year=2024)
+
+
+def test_get_last_credit_date_none(monkeypatch, sample_member):
+    monkeypatch.setattr(sample_member, "get_transactions", lambda: [
+        type("Tx", (), {"type": 2, "date": date(2023, 1, 1)}),
+        type("Tx", (), {"type": 4, "date": date(2024, 1, 1)}),
+    ])
+    assert sample_member.get_last_credit_date() is None
