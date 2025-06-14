@@ -9,6 +9,10 @@ psycopg2-binary~=2.9.10
 # Date handling
 python-dateutil~=2.9.0.post0
 
+# Plotting
+matplotlib~=3.8.4
+
 # Testing
 pytest~=8.3.5
 pytest-cov
+jinja2~=3.1.6

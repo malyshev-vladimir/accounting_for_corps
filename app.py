@@ -25,6 +25,7 @@ from services.settings_loader import (
     get_monthly_payment_for_non_residents
 )
 from services.monthly_payments import get_missing_monthly_payment_transactions
+from services.statistics import calculate_monthly_debt_trend, build_debt_chart
 from services.transactions_db import (
     load_transactions_by_email,
     load_transaction_by_id,
@@ -216,36 +217,32 @@ def admin_statistics():
     GET: Load all members, compute balances and last credit date,
          and display those with debts greater than 100€.
     """
-    # Get the selected date from query string or use today by default
-    date_str = request.args.get("date", datetime.today().strftime("%Y-%m-%d"))
+    # Parse the selected date from the query string (default = today)
+    date_str = request.args.get("date", date.today().strftime("%d.%m.%Y"))
     try:
         reference_date = datetime.strptime(date_str, "%d.%m.%Y").date()
     except ValueError:
+        logging.warning(f"[!] Invalid date format received: {date_str}, falling back to today")
         reference_date = date.today()
 
+    # Attempt to load all members
     try:
         members = load_all_members()
     except Exception as e:
         logging.error(f"[!] Error loading members for statistics: {e}")
-        return f"[!] Error loading members: {e}", 500
+        members = []
 
     report_rows = []
 
     for member in members:
         current_balance = member.get_balance()
-
-        # Skip members with small or positive balances (only show large debts)
         if current_balance >= -100:
             continue
 
-        # Calculate balance as of the selected reference date
         balance_on_date = member.get_balance_at(reference_date)
-
-        # Get date of last CREDIT-type transaction (Gutschrift)
         last_credit_date = member.get_last_credit_date()
         last_credit_str = last_credit_date.strftime("%d.%m.%Y") if last_credit_date else "–"
 
-        # Prepare row for the report
         report_rows.append({
             "name": f"{member.get_title()} {member.last_name}",
             "current_debt": round(current_balance, 2),
@@ -253,13 +250,21 @@ def admin_statistics():
             "last_topup": last_credit_str
         })
 
-    # Sort rows by current debt (descending by magnitude)
     report_rows.sort(key=lambda r: r["current_debt"])
+
+    # Build the debt chart (safely)
+    try:
+        labels, totals, deltas = calculate_monthly_debt_trend()
+        chart_base64 = build_debt_chart(labels, totals, deltas)
+    except Exception as e:
+        logging.error(f"[!] Error generating debt chart: {e}")
+        chart_base64 = None
 
     return render_template(
         "admin_statistics.html",
         rows=report_rows,
-        selected_date=reference_date
+        selected_date=reference_date,
+        chart_base64=chart_base64
     )
 
 

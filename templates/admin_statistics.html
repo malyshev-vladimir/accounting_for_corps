@@ -41,6 +41,10 @@
     {% else %}
     <p class="text-muted">Keine Mitglieder mit Schulden über 100 € gefunden.</p>
     {% endif %}
+    <div class="mt-5">
+        <h5 class="mb-3">Verlauf der Gesamtschulden</h5>
+        <img src="data:image/png;base64,{{ chart_base64 }}" class="img-fluid border rounded shadow-sm" alt="Schuldenverlauf">
+    </div>
 </div>
 {% endblock %}
 
