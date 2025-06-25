@@ -823,6 +823,183 @@ def test_delete_transaction_exception(client):
         assert b"error deleting transaction" in response.data.lower()
 
 
+# ROUTE: GET /admin/fines
+
+def test_admin_fines_get(client):
+    mock_members = [
+        MagicMock(email="test1@example.com", title="CC", last_name="Meier"),
+        MagicMock(email="test2@example.com", title="AC", last_name="Schmidt")
+    ]
+
+    with patch("app.load_all_members", return_value=mock_members):
+        response = client.get("/admin/fines")
+        assert response.status_code == 200
+        html = response.data.decode()
+        assert "Gruppeneintrag: Strafen" in html
+        assert "test1@example.com" in html
+        assert "Meier" in html
+        assert "Schmidt" in html
+
+
+# ROUTE: POST /admin/fines
+
+def test_submit_fines_success(client):
+    today_str = datetime.datetime.today().strftime("%d.%m.%Y")
+
+    form_data = {
+        "protocol_number": "2",
+        "meeting_type": "GCC",
+        "semester": "SoSe",
+        "year": "2025",
+        "session_date": today_str,
+        "fines[0][email]": "john@example.com",
+        "fines[0][amount]": "10",
+        "fines[0][description]": "Beireitung für nicht erfüllen eines CC Auftrags"
+    }
+
+    with patch("app.Transaction.save") as mock_save, \
+            patch("app.get_admin_email", return_value="admin@example.com"):
+        response = client.post("/admin/fines", data=form_data, follow_redirects=False)
+        assert response.status_code == 302
+        assert "/admin/fines?success=1" in response.headers["Location"]
+        assert mock_save.call_count == 1
+
+
+def test_submit_fines_missing_fields(client):
+    today_str = datetime.datetime.today().strftime("%d.%m.%Y")
+
+    form_data = {
+        "protocol_number": "2",
+        "meeting_type": "GCC",
+        "semester": "SoSe",
+        "year": "2025",
+        "session_date": today_str,
+        "fines[0][email]": "",  # missing email
+        "fines[0][amount]": "10",
+        "fines[0][description]": "Some reason"
+    }
+
+    response = client.post("/admin/fines", data=form_data)
+    assert response.status_code == 400
+    assert b"Alle Felder m" in response.data
+
+
+def test_submit_fines_invalid_amount(client):
+    today_str = datetime.datetime.today().strftime("%d.%m.%Y")
+
+    form_data = {
+        "protocol_number": "3",
+        "meeting_type": "CC",
+        "semester": "WiSe",
+        "year": "2025",
+        "session_date": today_str,
+        "fines[0][email]": "anna@example.com",
+        "fines[0][amount]": "abc",  # invalid amount
+        "fines[0][description]": "Invalid number"
+    }
+
+    response = client.post("/admin/fines", data=form_data)
+    assert response.status_code == 400
+    assert b"Ung" in response.data  # partial match for error message
+
+
+def test_submit_fines_invalid_date(client):
+    form_data = {
+        "protocol_number": "1",
+        "meeting_type": "FCC",
+        "semester": "WiSe",
+        "year": "2025",
+        "session_date": "31.02.2025",  # invalid date
+        "fines[0][email]": "leo@example.com",
+        "fines[0][amount]": "5",
+        "fines[0][description]": "Fake date"
+    }
+
+    response = client.post("/admin/fines", data=form_data)
+    assert response.status_code == 400
+    assert b"Ung" in response.data
+
+
+def test_submit_multiple_fines_success(client):
+    today_str = datetime.datetime.today().strftime("%d.%m.%Y")
+    form_data = {
+        "protocol_number": "4",
+        "meeting_type": "AC",
+        "semester": "SoSe",
+        "year": "2025",
+        "session_date": today_str,
+        "fines[0][email]": "anna@example.com",
+        "fines[0][amount]": "10",
+        "fines[0][description]": "Verwarnung",
+        "fines[1][email]": "bob@example.com",
+        "fines[1][amount]": "5",
+        "fines[1][description]": "Zu spät"
+    }
+
+    with patch("app.Transaction.save") as mock_save, \
+            patch("app.get_admin_email", return_value="admin@example.com"):
+        response = client.post("/admin/fines", data=form_data, follow_redirects=False)
+        assert response.status_code == 302
+        assert mock_save.call_count == 2
+
+
+def test_submit_fines_partial_success(client):
+    today_str = datetime.datetime.today().strftime("%d.%m.%Y")
+    form_data = {
+        "protocol_number": "5",
+        "meeting_type": "FCC",
+        "semester": "SoSe",
+        "year": "2025",
+        "session_date": today_str,
+        "fines[0][email]": "",  # invalid
+        "fines[0][amount]": "10",
+        "fines[0][description]": "leer",
+        "fines[1][email]": "user@example.com",
+        "fines[1][amount]": "15",
+        "fines[1][description]": "gültig"
+    }
+
+    with patch("app.Transaction.save") as mock_save, \
+            patch("app.get_admin_email", return_value="admin@example.com"):
+        response = client.post("/admin/fines", data=form_data)
+        assert response.status_code in (200, 302, 400)
+
+
+def test_submit_fines_invalid_protocol_number(client):
+    today_str = datetime.datetime.today().strftime("%d.%m.%Y")
+    form_data = {
+        "protocol_number": "abc",  # invalid
+        "meeting_type": "AC",
+        "semester": "WiSe",
+        "year": "2025",
+        "session_date": today_str,
+        "fines[0][email]": "user@example.com",
+        "fines[0][amount]": "10",
+        "fines[0][description]": "Test"
+    }
+
+    with patch("app.Transaction.save") as mock_save:
+        response = client.post("/admin/fines", data=form_data)
+        assert response.status_code == 400
+        mock_save.assert_not_called()
+
+
+def test_submit_fines_no_entries(client):
+    today_str = datetime.datetime.today().strftime("%d.%m.%Y")
+    form_data = {
+        "protocol_number": "2",
+        "meeting_type": "AC",
+        "semester": "WiSe",
+        "year": "2025",
+        "session_date": today_str
+    }
+
+    with patch("app.Transaction.save") as mock_save:
+        response = client.post("/admin/fines", data=form_data)
+        assert response.status_code == 400
+        mock_save.assert_not_called()
+
+
 # ROUTE: GET /admin/edit_titles_and_residency
 
 def test_edit_titles_and_residency(client):

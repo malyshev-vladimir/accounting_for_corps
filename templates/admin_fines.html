@@ -1,0 +1,100 @@
+{% extends "admin_base.html" %}
+
+{% block content %}
+<h3>Gruppeneintrag: Strafen</h3>
+
+{% if success %}
+<div class="alert alert-success alert-dismissible fade show" role="alert">
+    Strafen wurden erfolgreich gespeichert!
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
+{% endif %}
+
+<form id="fines-form" method="POST" action="/admin/fines" novalidate>
+    <div class="d-flex justify-content-between mb-3">
+
+        <div class="d-flex gap-2">
+            <div style="width: 60px;">
+                <label for="protocol_number" class="form-label">Pr.-Nr.</label>
+                <input type="number" class="form-control" name="protocol_number" id="protocol_number" required>
+            </div>
+            <div style="width: 100px;">
+                <label for="meeting_type" class="form-label">Typ</label>
+                <select class="form-select" name="meeting_type" id="meeting_type" required>
+                    <option value="AC">AC</option>
+                    <option value="CC">CC</option>
+                    <option value="GCC">GCC</option>
+                    <option value="FCC">FCC</option>
+                </select>
+            </div>
+            <div style="width: 100px;">
+                <label for="semester" class="form-label">Semester</label>
+                <select class="form-select" name="semester" id="semester" required>
+                    <option value="WiSe">WiSe</option>
+                    <option value="SoSe">SoSe</option>
+                </select>
+            </div>
+            <div style="width: 120px;">
+                <label for="year" class="form-label">Jahr</label>
+                <select class="form-select" name="year" id="year" required>
+                    {% set years = [current_year + 1, current_year, current_year - 1, current_year - 2, current_year -
+                    3, current_year - 4] %}
+                    {% for y in years %}
+                    <option value="{{ y }}" {% if y== current_year %}selected{% endif %}>{{ y }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <div style="width: 105px;">
+            <label for="session_date" class="form-label">Datum</label>
+            <input type="text" class="form-control flatpickr" name="session_date" id="session_date" required>
+        </div>
+    </div>
+
+    <table class="table table-bordered" id="fines-table">
+        <thead>
+        <tr>
+            <th>Mitglied</th>
+            <th>Betrag (€)</th>
+            <th>Grund</th>
+            <th></th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr>
+            <td>
+                <select class="form-select" name="fines[0][email]" required>
+                    <option value="" disabled selected>Mitglied wählen…</option>
+                    {% for member in members %}
+                    <option value="{{ member.email }}">{{ member.title }} {{ member.last_name }}</option>
+                    {% endfor %}
+                </select>
+            </td>
+            <td style="width: 130px;">
+                <input type="number" name="fines[0][amount]" class="form-control" step="0.01" required>
+            </td>
+            <td>
+                <input type="text" name="fines[0][description]" class="form-control" required>
+            </td>
+            <td style="width: 50px;">
+                <button type="button" class="btn btn-danger btn-sm remove-row"><i class="bi bi-x-lg"></i></button>
+            </td>
+        </tr>
+        </tbody>
+    </table>
+
+    <div class="d-flex justify-content-between mt-4">
+        <button type="button" class="btn btn-outline-secondary" onclick="addFineRow()">+ Neue Zeile</button>
+        <button type="submit" class="btn btn-primary">Strafen speichern</button>
+    </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+    const membersOptions = `{% for member in members %}<option value="{{ member.email }}">{{ member.title }} {{ member.last_name }}</option>{% endfor %}`;
+</script>
+<script src="{{ url_for('static', filename='js/fines_form.js') }}"></script>
+{% endblock %}

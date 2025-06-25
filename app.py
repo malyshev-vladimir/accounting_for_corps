@@ -487,6 +487,92 @@ def submit_beverage_report():
     return redirect(url_for("beverage_report"))
 
 
+@app.route("/admin/fines", methods=["GET"])
+def admin_fines():
+    """
+    Render the admin page for submitting fines to members.
+
+    This page displays a form where admins can input multiple fines at once,
+    including session date, protocol number, meeting type, semester, and fine entries.
+
+    GET: Fetch all members and render the fine submission form.
+    """
+    members = load_all_members()
+    current_year = datetime.now().year
+    current_date = datetime.now().strftime("%d.%m.%Y")
+    return render_template("admin_fines.html",
+                           members=members, current_year=current_year,
+                           current_date=current_date,
+                           success=request.args.get("success") == "1")
+
+
+@app.route("/admin/fines", methods=["POST"])
+def submit_fines():
+    """
+    Render the admin page for submitting fines to members.
+
+    This page displays a form where admins can input multiple fines at once,
+    including session date, protocol number, meeting type, semester, and fine entries.
+
+    GET: Fetch all members and render the fine submission form.
+    """
+    protocol_number = request.form.get("protocol_number", "").strip()
+    meeting_type = request.form.get("meeting_type", "").strip()
+    semester = request.form.get("semester", "").strip()
+    session_date = request.form.get("session_date", "").strip()
+    fines = request.form.to_dict(flat=False)
+
+    # Validate protocol_number
+    if not protocol_number.isdigit():
+        return "[!] Ungültige Protokollnummer.", 400
+
+    # Validate meeting_type
+    if meeting_type not in ["AC", "CC", "FCC", "GCC"]:
+        return "[!] Ungültiger Typ des Treffens.", 400
+
+    # Validate that there is at least one fine entry
+    if not any(key.startswith("fines[") for key in fines):
+        return "[!] Es wurden keine Strafen eingetragen.", 400
+
+    fines_list = []
+    index = 0
+
+    while f"fines[{index}][email]" in fines:
+        email = fines[f"fines[{index}][email]"][0].strip()
+        amount_str = fines[f"fines[{index}][amount]"][0].strip()
+        reason = fines[f"fines[{index}][description]"][0].strip()
+
+        if not email or not amount_str or not reason:
+            return "[!] Alle Felder müssen ausgefüllt sein.", 400
+
+        try:
+            amount = Decimal(amount_str)
+        except InvalidOperation:
+            return f"[!] Ungültiger Betrag in Zeile {index + 1}.", 400
+
+        try:
+            transaction_date = datetime.strptime(session_date, "%d.%m.%Y").date()
+        except ValueError:
+            return "[!] Ungültiges Datum.", 400
+
+        full_description = f"Strafe ({protocol_number}. {meeting_type} {semester}) vom {transaction_date.strftime('%d.%m.%Y')} [{reason}]"
+
+        fines_list.append(Transaction(
+            transaction_date=transaction_date,
+            description=full_description,
+            amount=-abs(amount),
+            member_email=email,
+            transaction_type=TransactionType.FINE
+        ))
+
+        index += 1
+
+    for fine in fines_list:
+        fine.save(changed_by=get_admin_email())
+
+    return redirect(url_for("admin_fines", success=1))
+
+
 @app.route("/admin/add_transaction", methods=["GET", "POST"])
 def admin_add_transaction():
     """
